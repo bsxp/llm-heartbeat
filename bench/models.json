@@ -1,0 +1,97 @@
+{
+  "_comment": [
+    "One entry per model under test. `key` is the stable identifier used in DynamoDB",
+    "and on the dashboard -- do not change it once data exists.",
+    "`effort` directly changes latency, so it is fixed here and logged on every run.",
+    "Changing it starts a new, incomparable series -- treat it like a prompt change.",
+    "`model_id` values marked TODO must be filled in from the provider's live model",
+    "list: `python scripts/list_models.py`.",
+    "Prices are USD per 1M tokens; leave null and the dashboard shows an em dash",
+    "rather than a guessed number."
+  ],
+  "models": [
+    {
+      "key": "opus-5",
+      "label": "Claude Opus 5",
+      "vendor": "Anthropic",
+      "adapter": "anthropic",
+      "model_id": "claude-opus-5",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "effort": "medium",
+      "price_in": 5.0,
+      "price_out": 25.0,
+      "enabled": true
+    },
+    {
+      "key": "fable-5",
+      "label": "Claude Fable 5",
+      "vendor": "Anthropic",
+      "adapter": "anthropic",
+      "model_id": "claude-fable-5",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "effort": "medium",
+      "price_in": 10.0,
+      "price_out": 50.0,
+      "enabled": true
+    },
+    {
+      "key": "sonnet-5",
+      "label": "Claude Sonnet 5",
+      "vendor": "Anthropic",
+      "adapter": "anthropic",
+      "model_id": "claude-sonnet-5",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "effort": "medium",
+      "price_in": 3.0,
+      "price_out": 15.0,
+      "enabled": true
+    },
+    {
+      "key": "sol",
+      "label": "Sol",
+      "vendor": "OpenAI",
+      "adapter": "openai",
+      "model_id": "TODO-run-scripts/list_models.py",
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": null,
+      "price_in": null,
+      "price_out": null,
+      "enabled": false
+    },
+    {
+      "key": "gemini",
+      "label": "Gemini",
+      "vendor": "Google",
+      "adapter": "google",
+      "model_id": "TODO-run-scripts/list_models.py",
+      "api_key_env": "GEMINI_API_KEY",
+      "price_in": null,
+      "price_out": null,
+      "enabled": false
+    },
+    {
+      "key": "grok",
+      "label": "Grok",
+      "vendor": "xAI",
+      "adapter": "openai",
+      "model_id": "TODO-run-scripts/list_models.py",
+      "api_key_env": "XAI_API_KEY",
+      "base_url": "https://api.x.ai/v1",
+      "price_in": null,
+      "price_out": null,
+      "enabled": false
+    },
+    {
+      "key": "deepseek",
+      "label": "DeepSeek",
+      "vendor": "DeepSeek",
+      "adapter": "openai",
+      "model_id": "TODO-run-scripts/list_models.py",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "base_url": "https://api.deepseek.com",
+      "price_in": null,
+      "price_out": null,
+      "enabled": false
+    }
+  ]
+}

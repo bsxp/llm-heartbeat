@@ -1,0 +1,28 @@
+# AWS Amplify build spec.
+#
+# The dashboard is plain static HTML with no build step and no dependencies --
+# Amplify just serves web/ as-is.
+#
+# IMPORTANT: results.json is NOT in this repo. It is regenerated hourly by the
+# backend and written to S3. Add a REWRITE (not a redirect) in the Amplify
+# console so the page can keep fetching a same-origin relative URL:
+#
+#   Source:  /results.json
+#   Target:  https://<your-cloudfront-domain>/results.json
+#   Type:    200 (Rewrite)
+#
+# A rewrite (rather than a redirect) keeps the request same-origin, so no CORS
+# configuration is needed on the bucket and the data origin stays out of this
+# public repo.
+version: 1
+frontend:
+  phases:
+    build:
+      commands:
+        - echo "Static site - nothing to build"
+  artifacts:
+    baseDirectory: web
+    files:
+      - '**/*'
+  cache:
+    paths: []

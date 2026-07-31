@@ -1,0 +1,20 @@
+# Never commit credentials or anything resembling them
+.env
+.env.*
+*.pem
+*secret*
+*credentials*
+
+# Generated data -- results.json is produced hourly and served from S3, not git
+web/results.json
+
+# Infrastructure lives in a separate private repo
+infra/
+template.yaml
+samconfig.toml
+.aws-sam/
+
+__pycache__/
+*.pyc
+.venv/
+.DS_Store

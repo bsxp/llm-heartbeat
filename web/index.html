@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model Speed-to-Answer</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --good: #0ca30c;
+    --critical: #d03b3b;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    --series-5: #e87ba4;
+    --series-6: #008300;
+    --series-7: #4a3aa7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+      --series-5: #d55181;
+      --series-6: #008300;
+      --series-7: #9085e9;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
+  .viz-root { background: var(--page); min-height: 100vh; padding: 32px 20px 64px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  header { margin-bottom: 28px; }
+  h1 { font-size: 1.6rem; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 6px; }
+  .sub { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; max-width: 68ch; margin: 0; }
+  .meta { color: var(--text-muted); font-size: 0.8rem; margin-top: 10px; }
+
+  section { margin-top: 32px; }
+  h2 { font-size: 1rem; font-weight: 620; margin: 0 0 4px; }
+  .note { color: var(--text-secondary); font-size: 0.83rem; margin: 0 0 14px; max-width: 72ch; line-height: 1.5; }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+  }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 12px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 15px; }
+  .tile-head { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+  .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+  .tile-name { font-size: 0.83rem; font-weight: 600; color: var(--text-primary); }
+  .tile-vendor { font-size: 0.72rem; color: var(--text-muted); margin-left: auto; }
+  .tile-value { font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+  .tile-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); margin-left: 3px; }
+  .tile-rows { margin-top: 10px; display: grid; gap: 3px; }
+  .tile-row { display: flex; justify-content: space-between; font-size: 0.76rem; color: var(--text-secondary); }
+  .tile-row span:last-child { font-variant-numeric: tabular-nums; color: var(--text-primary); }
+
+  .filters { display: flex; gap: 6px; margin: 4px 0 0; }
+  .filters button {
+    font: inherit; font-size: 0.78rem; padding: 6px 13px; cursor: pointer;
+    background: var(--surface-1); color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 7px;
+  }
+  .filters button:hover { color: var(--text-primary); }
+  .filters button.on { color: var(--text-primary); font-weight: 600; border-color: var(--axis); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-secondary); }
+
+  .chart-scroll { overflow-x: auto; }
+  svg { display: block; max-width: 100%; }
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .axis-line { stroke: var(--axis); stroke-width: 1; }
+  .tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .axis-title { fill: var(--text-secondary); font-size: 11px; }
+  .crosshair { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; }
+
+  .tooltip {
+    position: absolute; pointer-events: none; opacity: 0;
+    background: var(--surface-1); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 11px; font-size: 0.76rem; min-width: 172px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.16); transition: opacity .1s; z-index: 10;
+  }
+  .tt-title { font-weight: 620; margin-bottom: 6px; color: var(--text-secondary); }
+  .tt-row { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+  .tt-row .val { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .tt-row .bad { color: var(--critical); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.79rem; }
+  th, td { text-align: right; padding: 7px 9px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--text-secondary); font-weight: 600; }
+  td { font-variant-numeric: tabular-nums; }
+  .ok { color: var(--good); }
+  .fail { color: var(--critical); }
+  .empty { color: var(--text-secondary); font-size: 0.88rem; padding: 28px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+
+  <header>
+    <h1>Model Speed-to-Answer</h1>
+    <p class="sub">
+      Every hour, each model gets the same byte-identical prompt — write a program to
+      solve a non-trivial counting problem — and we time the response. Nothing is
+      executed and nothing is graded; the number is how long you wait for an answer,
+      verbosity included.
+    </p>
+    <p class="meta" id="meta">Loading…</p>
+  </header>
+
+  <div class="filters" role="group" aria-label="Time range">
+    <button type="button" data-hours="24" class="on">24 hours</button>
+    <button type="button" data-hours="168">7 days</button>
+    <button type="button" data-hours="0">All</button>
+  </div>
+
+  <section>
+    <h2>Latest run</h2>
+    <p class="note">Median is over the runs shown.</p>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section>
+    <h2>Total time per run</h2>
+    <p class="note">The headline: request sent to response complete. Hollow dot = the
+      response came back empty or without code, so a spike there is a degraded response
+      rather than a slow one.</p>
+    <div class="card">
+      <div id="legend-time" class="legend"></div>
+      <div class="chart-scroll"><div id="chart-time"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Output tokens per run</h2>
+    <p class="note">How much the model wrote. Same prompt every hour, so this is the
+      model's own verbosity — and it is most of what drives total time above.</p>
+    <div class="card">
+      <div id="legend-tokens" class="legend"></div>
+      <div class="chart-scroll"><div id="chart-tokens"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Generation rate</h2>
+    <p class="note">Output tokens per second, excluding the wait for the first token.
+      This is what separates the two reasons total time moves: flat here with a rising
+      total means the model got wordier; falling here means the provider got slower.</p>
+    <div class="card">
+      <div id="legend-rate" class="legend"></div>
+      <div class="chart-scroll"><div id="chart-rate"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>All models</h2>
+    <p class="note">The same numbers as above, as text.</p>
+    <div class="card chart-scroll"><table id="table"></table></div>
+  </section>
+
+  <div class="tooltip" id="tooltip"></div>
+</div>
+</div>
+
+<script>
+const SLOTS = 7;
+const tooltip = document.getElementById('tooltip');
+
+const fmtMs = ms => ms == null ? '—' : ms >= 60000
+  ? (ms/60000).toFixed(1) + ' min'
+  : ms >= 1000 ? (ms/1000).toFixed(1) + ' s' : ms + ' ms';
+const fmtNum = n => n == null ? '—' : n.toLocaleString('en-US');
+const fmtRate = n => n == null ? '—' : n.toFixed(0) + ' tok/s';
+const fmtUsd = n => n == null ? '—' : '$' + (n < 0.01 ? n.toFixed(4) : n.toFixed(3));
+const median = xs => {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a,b) => a-b), m = s.length >> 1;
+  return s.length % 2 ? s[m] : Math.round((s[m-1] + s[m]) / 2);
+};
+const colorOf = i => `var(--series-${(i % SLOTS) + 1})`;
+
+function niceTicks(max, count = 5) {
+  if (!(max > 0)) return [0, 1];
+  const raw = max / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].find(m => mag * m >= raw) * mag;
+  // Round the top tick UP past max, or the tallest points render outside the plot.
+  const top = Math.ceil(max / step) * step;
+  const out = [];
+  for (let v = 0; v <= top + step * 0.001; v += step) out.push(v);
+  return out;
+}
+
+function lineChart(mount, legendMount, series, pick, formatter, yTitle) {
+  const W = Math.max(760, mount.clientWidth || 760), H = 320;
+  const M = { t: 14, r: 18, b: 34, l: 62 };
+  const iw = W - M.l - M.r, ih = H - M.t - M.b;
+
+  const prepared = series.map((s, i) => ({
+    key: s.key, label: s.label, color: colorOf(i),
+    points: s.runs
+      .filter(r => r.status === 'ok' && pick(r) != null)
+      .map(r => ({ t: Date.parse(r.ts), v: pick(r), healthy: r.health === 'ok', run: r }))
+  })).filter(s => s.points.length);
+
+  legendMount.innerHTML = prepared.map(s =>
+    `<span class="legend-item"><span class="swatch" style="background:${s.color}"></span>${s.label}</span>`
+  ).join('');
+
+  if (!prepared.length) { mount.innerHTML = '<p class="empty">No completed runs yet.</p>'; return; }
+
+  const all = prepared.flatMap(s => s.points);
+  const t0 = Math.min(...all.map(p => p.t)), t1 = Math.max(...all.map(p => p.t));
+  const span = Math.max(t1 - t0, 1);
+  const ticks = niceTicks(Math.max(...all.map(p => p.v)));
+  const yMax = ticks[ticks.length - 1];
+  const X = t => M.l + ((t - t0) / span) * iw;
+  const Y = v => M.t + ih - (v / yMax) * ih;
+
+  const xTicks = [];
+  for (let i = 0; i <= 4; i++) xTicks.push(t0 + (span * i) / 4);
+  const dayMs = 86400000;
+  const xLabel = t => new Date(t).toLocaleString('en-US',
+    span > dayMs * 2 ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', hour: 'numeric' });
+
+  const svg = [`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${yTitle} per run over time">`];
+  ticks.forEach(v => {
+    svg.push(`<line class="grid-line" x1="${M.l}" y1="${Y(v)}" x2="${M.l+iw}" y2="${Y(v)}"/>`);
+    svg.push(`<text class="tick" x="${M.l-9}" y="${Y(v)+4}" text-anchor="end">${formatter(v)}</text>`);
+  });
+  svg.push(`<line class="axis-line" x1="${M.l}" y1="${M.t+ih}" x2="${M.l+iw}" y2="${M.t+ih}"/>`);
+  // Anchor the outer ticks inward so neither label is clipped by the viewBox.
+  xTicks.forEach((t, i) => {
+    const anchor = i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle';
+    svg.push(`<text class="tick" x="${X(t)}" y="${M.t+ih+20}" text-anchor="${anchor}">${xLabel(t)}</text>`);
+  });
+
+  svg.push(`<line class="crosshair" id="ch-${mount.id}" x1="0" y1="${M.t}" x2="0" y2="${M.t+ih}" style="opacity:0"/>`);
+
+  prepared.forEach(s => {
+    const pts = [...s.points].sort((a,b) => a.t - b.t);
+    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+    svg.push(`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+    pts.forEach(p => svg.push(
+      `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="4" fill="${p.healthy ? s.color : 'var(--surface-1)'}" stroke="${s.color}" stroke-width="2"/>`));
+  });
+  svg.push('</svg>');
+  mount.innerHTML = svg.join('');
+
+  // Crosshair + shared tooltip: nearest timestamp across all series.
+  const stamps = [...new Set(all.map(p => p.t))].sort((a,b) => a-b);
+  const node = mount.querySelector('svg');
+  const cross = mount.querySelector(`#ch-${mount.id}`);
+  node.addEventListener('mousemove', ev => {
+    const box = node.getBoundingClientRect();
+    const scale = W / box.width;
+    const t = t0 + (((ev.clientX - box.left) * scale - M.l) / iw) * span;
+    const nearest = stamps.reduce((a, b) => Math.abs(b - t) < Math.abs(a - t) ? b : a);
+    cross.setAttribute('x1', X(nearest)); cross.setAttribute('x2', X(nearest));
+    cross.style.opacity = 1;
+    const rows = prepared.map(s => {
+      const hit = s.points.find(p => p.t === nearest);
+      if (!hit) return '';
+      return `<div class="tt-row"><span class="swatch" style="background:${s.color}"></span>${s.label}` +
+             `<span class="val${hit.healthy ? '' : ' bad'}">${formatter(hit.v)}${hit.healthy ? '' : ' !'}</span></div>`;
+    }).join('');
+    tooltip.innerHTML = `<div class="tt-title">${new Date(nearest).toLocaleString('en-US',
+      { month:'short', day:'numeric', hour:'numeric' })}</div>${rows}`;
+    tooltip.style.opacity = 1;
+    const tb = tooltip.getBoundingClientRect();
+    let left = ev.clientX + 14;
+    if (left + tb.width > window.innerWidth - 8) left = ev.clientX - tb.width - 14;
+    tooltip.style.left = (left + window.scrollX) + 'px';
+    tooltip.style.top = (ev.clientY + window.scrollY - tb.height / 2) + 'px';
+  });
+  node.addEventListener('mouseleave', () => { tooltip.style.opacity = 0; cross.style.opacity = 0; });
+}
+
+function renderTiles(series) {
+  document.getElementById('tiles').innerHTML = series.map((s, i) => {
+    const runs = s.runs;
+    const last = runs[runs.length - 1];
+    const ok = runs.filter(r => r.status === 'ok');
+    const bad = runs.length - runs.filter(r => r.health === 'ok').length;
+    return `<div class="tile">
+      <div class="tile-head">
+        <span class="swatch" style="background:${colorOf(i)}"></span>
+        <span class="tile-name">${s.label}</span>
+        <span class="tile-vendor">${s.vendor}</span>
+      </div>
+      <div><span class="tile-value">${fmtMs(last && last.total_ms)}</span><span class="tile-unit">last run</span></div>
+      <div class="tile-rows">
+        <div class="tile-row"><span>Median total</span><span>${fmtMs(median(ok.map(r => r.total_ms)))}</span></div>
+        <div class="tile-row"><span>Median first token</span><span>${fmtMs(median(ok.map(r => r.ttft_ms).filter(v => v != null)))}</span></div>
+        <div class="tile-row"><span>Median rate</span><span>${fmtRate(median(ok.map(r => r.tok_per_s).filter(v => v != null)))}</span></div>
+        <div class="tile-row"><span>Median output</span><span>${fmtNum(median(ok.map(r => r.output_tokens)))} tok</span></div>
+        <div class="tile-row"><span>Runs</span><span>${runs.length}${bad ? ` · ${bad} degraded` : ''}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTable(series) {
+  const head = ['Model','Vendor','Last run','Total (med)','First token (med)','Rate (med)',
+                'Output tok (med)','Cost / run','Effort','Health'];
+  const rows = series.map(s => {
+    const runs = s.runs, last = runs[runs.length - 1] || {};
+    const ok = runs.filter(r => r.status === 'ok');
+    const bad = runs.length - runs.filter(r => r.health === 'ok').length;
+    const verdict = bad === 0
+      ? '<span class="ok">all ok</span>'
+      : `<span class="fail">${bad} degraded</span>`;
+    return `<tr>
+      <td>${s.label}</td><td>${s.vendor}</td>
+      <td>${last.ts ? new Date(last.ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric'}) : '—'}</td>
+      <td>${fmtMs(median(ok.map(r => r.total_ms)))}</td>
+      <td>${fmtMs(median(ok.map(r => r.ttft_ms).filter(v => v != null)))}</td>
+      <td>${fmtRate(median(ok.map(r => r.tok_per_s).filter(v => v != null)))}</td>
+      <td>${fmtNum(median(ok.map(r => r.output_tokens)))}</td>
+      <td>${fmtUsd(last.cost_usd ?? null)}</td>
+      <td>${last.effort || '—'}</td>
+      <td>${verdict} · ${runs.length} runs</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('table').innerHTML =
+    `<thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody>`;
+}
+
+let DATA = null;
+let HOURS = 24;
+
+function draw() {
+  if (!DATA) return;
+  const cutoff = HOURS ? Date.now() - HOURS * 3600_000 : 0;
+  const series = (DATA.series || [])
+    .map(s => ({ ...s, runs: s.runs.filter(r => Date.parse(r.ts) >= cutoff) }))
+    .filter(s => s.runs.length);
+
+  const total = series.reduce((n, s) => n + s.runs.length, 0);
+  document.getElementById('meta').textContent =
+    `${series.length} models · ${total} runs in range · prompt ${DATA.prompt_sha || '?'} · ` +
+    `updated ${new Date(DATA.generated_at).toLocaleString('en-US')}`;
+
+  if (!series.length) {
+    document.getElementById('tiles').innerHTML = '<p class="empty">No runs in this range.</p>';
+    document.getElementById('table').innerHTML = '';
+    document.getElementById('chart-time').innerHTML = '<p class="empty">No runs in this range.</p>';
+    document.getElementById('chart-tokens').innerHTML = '<p class="empty">No runs in this range.</p>';
+    document.getElementById('chart-rate').innerHTML = '<p class="empty">No runs in this range.</p>';
+    return;
+  }
+  renderTiles(series);
+  renderTable(series);
+  lineChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
+            series, r => r.total_ms, fmtMs, 'Total time');
+  lineChart(document.getElementById('chart-tokens'), document.getElementById('legend-tokens'),
+            series, r => r.output_tokens, fmtNum, 'Output tokens');
+  lineChart(document.getElementById('chart-rate'), document.getElementById('legend-rate'),
+            series, r => r.tok_per_s, fmtRate, 'Tokens / sec');
+}
+
+async function main() {
+  try {
+    const res = await fetch('results.json?_=' + Date.now());
+    if (!res.ok) throw new Error(res.status);
+    DATA = await res.json();
+  } catch (err) {
+    document.getElementById('meta').textContent =
+      'Could not load results.json — no runs have been published yet.';
+    return;
+  }
+  document.querySelectorAll('.filters button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filters button').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      HOURS = Number(btn.dataset.hours);
+      draw();
+    });
+  });
+  draw();
+}
+
+main();
+window.addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTimeout(draw, 200); });
+</script>
+</body>
+</html>
