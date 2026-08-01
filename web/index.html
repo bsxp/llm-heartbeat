@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Model Speed-to-Answer</title>
+<title>Is my LLM slow?</title>
 <script>
   // Stamp the saved theme before first paint, or a dark-mode visitor gets a
   // white flash on every load.
@@ -269,10 +269,10 @@
 
   <div class="topbar">
   <header>
-    <h1>Model Speed-to-Answer</h1>
+    <h1>Is my LLM slow?</h1>
     <p class="sub">
-      The same prompt, sent to every frontier model, every hour. We measure one thing:
-      how long you wait for an answer.
+      The same prompt, sent to every frontier model, every hour. This tracks how long
+      each one takes to answer.
     </p>
     <p class="meta" id="meta">Loading…</p>
   </header>
@@ -297,8 +297,8 @@
 
 <section>
     <h2>Response time</h2>
-    <p class="note">How long each model took to answer, run by run. Hollow dot = the response
-      came back empty or refused, so that point is a broken run rather than a slow one.</p>
+    <p class="note">How long each model took to answer, run by run. A hollow dot means the
+      response came back empty or was refused.</p>
     <div class="card">
       <div id="legend-time" class="legend"></div>
       <div class="chart-scroll"><div id="chart-time"></div></div>
@@ -307,20 +307,19 @@
 
 <section>
     <h2>Model health</h2>
-    <p class="note">Each model's latest response time, judged against its own recent history —
-      not against the other models. "Typical" is the median of that model's earlier runs in range.</p>
+    <p class="note">Each model's latest response time, compared with its own recent runs.
+      Typical is the median of that model's earlier runs in the selected range.</p>
     <div class="tiles" id="tiles"></div>
   </section>
 
 <section>
     <h2>Anatomy of a run</h2>
     <p class="note">The latest run from each model, split into time spent <strong>waiting</strong>
-      for the first word and time spent <strong>writing</strong>. Same total, very different
-      experience.</p>
+      for the first word and time spent <strong>writing</strong>.</p>
     <div class="card">
       <div class="legend">
         <span class="legend-item"><span class="swatch" style="background:var(--text-muted)"></span>Waiting for first word</span>
-        <span class="legend-item"><span class="swatch" style="background:linear-gradient(120deg,var(--series-1),var(--series-3),var(--series-4))"></span>Writing <span style="color:var(--text-muted)">(each model's own colour)</span></span>
+        <span class="legend-item"><span class="swatch" style="background:linear-gradient(120deg,var(--series-1),var(--series-3),var(--series-4))"></span>Writing <span style="color:var(--text-muted)">(model colour)</span></span>
       </div>
       <div class="chart-scroll"><div id="chart-anatomy"></div></div>
     </div>
@@ -328,17 +327,16 @@
 
   <section>
     <h2>How this works</h2>
-    <p class="note">Every model gets the <strong>same prompt</strong>, on a schedule, and we time
-      the reply. Nothing is executed and nothing is graded &mdash; this measures the wait, not the
-      answer.</p>
+    <p class="note">Every model gets the <strong>same prompt</strong> on a schedule, and we time
+      the reply. Nothing is executed and nothing is graded.</p>
     <div class="card">
       <ul class="rules">
         <li><strong>One fixed prompt.</strong> A hash of it (<code id="psha">&mdash;</code>) is
-          stored on every run, so a change to it is visible instead of silent.</li>
+          stored on every run, so any edit to it shows up in the data.</li>
         <li><strong>Settings are pinned.</strong> Reasoning effort and thinking mode are fixed per
-          model and recorded, because both change latency on their own.</li>
+          model and recorded on each run. Both affect latency.</li>
         <li><strong>Nothing is smoothed.</strong> No averaging, no adjusting for length. A model
-          that wrote more really did take longer.</li>
+          that wrote more took longer.</li>
       </ul>
     </div>
     <div class="card" style="margin-top:14px">
@@ -380,44 +378,42 @@
       </svg>
       </div>
       <p class="note" style="margin:14px 0 0">
-        The clock is split three ways. Everything up to the <strong>first byte of the
-        response</strong> is transport — network round-trip, TLS, and whatever queueing the
-        provider does before it starts replying. From there to the first visible word is the
-        model <strong>thinking silently</strong>. After that it is writing.
+        The clock is split three ways. Time up to the <strong>first byte of the response</strong>
+        covers network round-trip, TLS, and any queueing before the provider starts replying. From
+        there to the first visible word, the model is <strong>thinking</strong>. After that it is
+        writing.
         <br><br>
-        We still can't separate network transit from provider-side queueing inside that first
-        segment — both happen before the server says anything. But that segment is small and
-        roughly constant from a single region, so a change in it is visible rather than buried
-        inside one opaque number.
+        Network transit and provider queueing cannot be separated inside that first segment, since
+        both finish before the server sends anything. From a single region it stays a small and
+        fairly stable slice.
+      </p>
     </div>
 
   </section>
 
-<section>
+  <section>
     <h2>What each number means</h2>
     <div class="card">
       <div class="glossary">
         <div class="gl"><div class="gl-t">Total time</div><div class="gl-d">
-          Request sent to response finished — <em>the headline</em>. Includes however much the model
-          chose to write; a wordier model genuinely does make you wait longer, and we don't correct
-          for that.</div></div>
+          Request sent to response finished. Includes however much the model chose to write. We do
+          not adjust for length.</div></div>
         <div class="gl"><div class="gl-t">First token</div><div class="gl-d">
-          How long until the first visible word. <em>Includes reasoning time</em> — models that think
-          before answering are silent for this whole stretch.</div></div>
+          How long until the first visible word. This includes reasoning time, so a model that
+          thinks before answering stays silent for all of it.</div></div>
         <div class="gl"><div class="gl-t">What we don't measure</div><div class="gl-d">
-          Correctness, quality, or capability. Nothing runs the code. The health flag only separates
-          a slow run from a refused or empty one — <em>it is not a grade</em>.</div></div>
+          Correctness, quality, or capability. Nothing runs the code. The health flag separates a
+          slow run from a refused or empty one. It is not a grade.</div></div>
       </div>
     </div>
   </section>
 
 <section>
     <h2>All models</h2>
-    <p class="note">Medians across the selected range. Two caveats that don't fit in a column:
-      <strong>rate</strong> is not generation speed for models that reason silently then flush the
-      whole answer at once, and <strong>output tokens</strong> aren't comparable between Opus 4.6 and
-      4.7+ (different tokenizers). Every model runs at <code>medium</code> effort with adaptive
-      thinking.</p>
+    <p class="note">Medians across the selected range. Two caveats: <strong>rate</strong> is not
+      generation speed for models that reason silently and then send the answer at once, and
+      <strong>output tokens</strong> are not comparable between Opus 4.6 and 4.7+ (different
+      tokenizers). Every model runs at <code>medium</code> effort with adaptive thinking.</p>
     <div class="card chart-scroll"><table id="table"></table></div>
   </section>
 
@@ -602,7 +598,7 @@ function verdict(latest, baseline, n) {
   if (d > 0.5)  return { cls: 'v-bad',  icon: '&#9650;', text: `${pct}% slower than usual` };
   if (d > 0.2)  return { cls: 'v-warn', icon: '&#9650;', text: `${pct}% slower than usual` };
   if (d < -0.2) return { cls: 'v-good', icon: '&#9660;', text: `${pct}% faster than usual` };
-  return { cls: 'v-ok', icon: '&#9679;', text: 'normal for this model' };
+  return { cls: 'v-ok', icon: '&#9679;', text: 'within its usual range' };
 }
 
 function renderTiles(series) {
