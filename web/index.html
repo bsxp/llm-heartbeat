@@ -648,8 +648,8 @@ function renderVerdict(series) {
   series.forEach(s => {
     const ok = s.runs.filter(r => r.status === 'ok' && r.total_ms != null);
     const lastAny = s.runs[s.runs.length - 1];
-    if (lastAny && lastAny.status !== 'ok') { down.push(s.label); return; }
-    if (!ok.length) { down.push(s.label); return; }
+    if (lastAny && lastAny.status !== 'ok') { down.push({ label: s.label, why: lastAny.status }); return; }
+    if (!ok.length) { down.push({ label: s.label, why: 'no data' }); return; }
     const prior = ok.slice(0, -1).map(r => r.total_ms);
     // Same bar the cards use: below the baseline threshold we say nothing
     // rather than calling a model slow off two or three samples.
@@ -677,7 +677,15 @@ function renderVerdict(series) {
     line = `Probably not.`;
     sub = `All ${fine.length} models are answering within their usual range.`;
   }
-  if (down.length) sub += ` <b>${list(down)}</b> ${down.length === 1 ? 'is' : 'are'} not responding at all.`;
+  if (down.length) {
+    // A refusal is not an outage: the model answers in ~2s, it just declines.
+    // Calling that "not responding" misreports what is happening.
+    const say = { refusal: 'declining the prompt', error: 'erroring', 'no data': 'without a completed run' };
+    const grouped = {};
+    down.forEach(d => (grouped[say[d.why] || d.why] ||= []).push(d.label));
+    sub += ' ' + Object.entries(grouped).map(([why, names]) =>
+      `<b>${list(names)}</b> ${names.length === 1 ? 'is' : 'are'} ${why}.`).join(' ');
+  }
   if (unknown.length) sub += ` ${unknown.length} still building a baseline.`;
 
   const t = series.flatMap(s => s.runs).map(r => Date.parse(r.ts)).sort((a, b) => b - a)[0];
@@ -698,8 +706,10 @@ function renderTiles(series) {
         <div class="tile-head"><span class="swatch" style="background:${color}"></span>
           <span class="tile-name">${s.label}</span><span class="tile-vendor">${s.vendor}</span></div>
         <div class="tile-value">&mdash;</div>
-        <div class="verdict v-bad"><span>&#9650;</span> not responding &middot; ${down || 'no data'}</div>
-        <div class="tile-foot">${s.runs.length} run${s.runs.length === 1 ? '' : 's'}, none completed</div>
+        <div class="verdict v-bad"><span>&#9650;</span> ${
+          down === 'refusal' ? 'declining every request'
+          : down === 'error' ? 'erroring on every request' : 'no completed runs'}</div>
+        <div class="tile-foot">${s.runs.length} run${s.runs.length === 1 ? '' : 's'}, none answered</div>
       </div>`;
     }
 
