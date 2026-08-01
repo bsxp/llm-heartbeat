@@ -257,7 +257,7 @@
   .dg-mark path { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
   .dg-mark text { fill: var(--text-muted); font-size: 10.5px; }
 
-  .chart-mode { margin-bottom: 14px; }
+  .chart-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
   .facet + .facet { margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--border); }
   .facet-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 6px; }
   .facet-name { font-size: 0.74rem; font-weight: 600; color: var(--text-primary);
@@ -339,16 +339,23 @@
 
 <section>
     <h2>Response time</h2>
-    <p class="note">How long each model took to answer, run by run, on a <strong>log scale</strong> —
-      responses range from seconds to minutes, and a linear axis lets one spike flatten
-      everything else. Switch to
+    <p class="note">How long each model took to answer, run by run. The y axis defaults to
+      <strong>log</strong> — responses range from seconds to minutes, and a linear axis lets one
+      spike flatten everything else — but you can switch it to <strong>linear</strong> to read
+      the gaps at face value. Switch to
       <strong>vs. its own normal</strong> to see each model as a percentage of its own median,
       which is how the verdict above is decided. A hollow dot means the response came back empty
       or was refused.</p>
     <div class="card">
-      <div class="filters chart-mode" role="group" aria-label="Chart scale">
-        <button type="button" data-mode="abs" class="on">Seconds</button>
-        <button type="button" data-mode="rel">vs. its own normal</button>
+      <div class="chart-controls">
+        <div class="filters chart-mode" role="group" aria-label="Chart measure">
+          <button type="button" data-mode="abs" class="on">Seconds</button>
+          <button type="button" data-mode="rel">vs. its own normal</button>
+        </div>
+        <div class="filters axis-mode" role="group" aria-label="Y axis scale">
+          <button type="button" data-axis="log" class="on">Log</button>
+          <button type="button" data-axis="lin">Linear</button>
+        </div>
       </div>
       <div id="legend-time" class="legend"></div>
       <div class="chart-scroll"><div id="chart-time"></div></div>
@@ -550,6 +557,7 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
     };
     yMin = step(Math.max(1, dataMin), false);
     yMax = step(dataMax, true);
+    if (!(yMax > yMin)) yMax = yMin * 10;   // one flat value would give a zero-height axis
     ticks = logTicks(yMin, yMax);
     const lg = Math.log10(yMax) - Math.log10(yMin);
     Yfrac = v => (Math.log10(Math.max(v, yMin)) - Math.log10(yMin)) / lg;
@@ -936,6 +944,7 @@ applyTheme((() => { try { return localStorage.getItem('lhb-theme') || 'system'; 
 let DATA = null;
 let HOURS = 24;
 let SCALE = 'abs';   // 'abs' = seconds, 'rel' = % of each model's own median
+let AXIS = 'log';    // 'log' or 'lin' -- y axis for whichever measure is showing
 
 function draw() {
   if (!DATA) return;
@@ -979,10 +988,10 @@ function draw() {
         rel_pct: base && r.total_ms != null ? (r.total_ms / base) * 100 : null })) };
     });
     facetedChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
-                 rel, r => r.rel_pct, v => Math.round(v) + '%', 100);
+                 rel, r => r.rel_pct, v => Math.round(v) + '%', 100, AXIS);
   } else {
     facetedChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
-                 series, r => r.total_ms, fmtMs, null, 'log');
+                 series, r => r.total_ms, fmtMs, null, AXIS);
   }
 }
 
@@ -996,19 +1005,17 @@ async function main() {
       'Could not load results.json — no runs have been published yet.';
     return;
   }
-  document.querySelectorAll('.chart-mode button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.chart-mode button').forEach(b => b.classList.remove('on'));
+  // Selection is scoped to the clicked group, so the three toggles (range,
+  // measure, axis) stay independent of each other.
+  document.querySelectorAll('.filters').forEach(group => {
+    group.addEventListener('click', ev => {
+      const btn = ev.target.closest('button');
+      if (!btn || !group.contains(btn)) return;
+      group.querySelectorAll('button').forEach(b => b.classList.remove('on'));
       btn.classList.add('on');
-      SCALE = btn.dataset.mode;
-      draw();
-    });
-  });
-  document.querySelectorAll('.filters:not(.chart-mode) button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filters:not(.chart-mode) button').forEach(b => b.classList.remove('on'));
-      btn.classList.add('on');
-      HOURS = Number(btn.dataset.hours);
+      if (btn.dataset.mode) SCALE = btn.dataset.mode;
+      else if (btn.dataset.axis) AXIS = btn.dataset.axis;
+      else HOURS = Number(btn.dataset.hours);
       draw();
     });
   });
