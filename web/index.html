@@ -334,8 +334,12 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle) {
 function renderTiles(series) {
   document.getElementById('tiles').innerHTML = series.map((s, i) => {
     const runs = s.runs;
-    const last = runs[runs.length - 1];
     const ok = runs.filter(r => r.status === 'ok');
+    // Headline the last SUCCESSFUL run. A refusal returns in ~2s with no work
+    // done, and showing it as the model's time would rank it fastest.
+    const last = ok[ok.length - 1];
+    const lastAny = runs[runs.length - 1];
+    const degraded = lastAny && lastAny.status !== 'ok' ? lastAny.status : null;
     const bad = runs.length - runs.filter(r => r.health === 'ok').length;
     return `<div class="tile">
       <div class="tile-head">
@@ -343,7 +347,8 @@ function renderTiles(series) {
         <span class="tile-name">${s.label}</span>
         <span class="tile-vendor">${s.vendor}</span>
       </div>
-      <div><span class="tile-value">${fmtMs(last && last.total_ms)}</span><span class="tile-unit">last run</span></div>
+      <div><span class="tile-value">${fmtMs(last && last.total_ms)}</span><span class="tile-unit">${
+        degraded ? `last ok run &middot; <span class="fail">now ${degraded}</span>` : 'last run'}</span></div>
       <div class="tile-rows">
         <div class="tile-row"><span>Median total</span><span>${fmtMs(median(ok.map(r => r.total_ms)))}</span></div>
         <div class="tile-row"><span>Median first token</span><span>${fmtMs(median(ok.map(r => r.ttft_ms).filter(v => v != null)))}</span></div>
