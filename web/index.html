@@ -333,23 +333,8 @@
     </div>
     <div class="card" style="margin-top:14px">
       <div class="chart-scroll">
-      <svg viewBox="0 -4 900 272" width="900" style="max-width:100%" role="img"
-           aria-label="Diagram: a scheduler triggers a dispatcher, which fans out to one runner per model; each runner makes one streaming request to a provider. The clock starts at the request, marks the first visible word, and stops when the stream ends.">
-        <!-- topology row -->
-        <g class="dg">
-          <rect x="6"   y="14" width="150" height="46" rx="7"/>
-          <text x="81"  y="33">Scheduler</text><text x="81" y="49" class="dg-sub">every hour</text>
-          <rect x="196" y="14" width="140" height="46" rx="7"/>
-          <text x="266" y="33">Dispatcher</text><text x="266" y="49" class="dg-sub">fans out</text>
-          <rect x="376" y="14" width="150" height="46" rx="7"/>
-          <text x="451" y="33">Runner</text><text x="451" y="49" class="dg-sub">one per model</text>
-          <rect x="566" y="14" width="328" height="46" rx="7"/>
-          <text x="730" y="33">Provider API &#8594; model</text><text x="730" y="49" class="dg-sub">someone else&#8217;s infrastructure</text>
-        </g>
-        <g class="dg-arrow">
-          <path d="M160 37 H190"/><path d="M340 37 H370"/><path d="M530 37 H560"/>
-          <text x="545" y="9" class="dg-edge" text-anchor="middle">1 streaming request</text>
-        </g>
+      <svg viewBox="0 88 900 176" width="900" style="max-width:100%" role="img"
+           aria-label="Diagram of one measured request: the clock starts when the request is sent, runs through network, provider queueing and silent reasoning, marks the first visible word, then covers the writing phase until the stream ends.">
 
         <!-- measured span -->
         <text x="6" y="98" class="dg-h">What the clock covers</text>
@@ -393,59 +378,31 @@
 
   </section>
 
-  </section>
-
 <section>
     <h2>What each number means</h2>
     <div class="card">
       <div class="glossary">
         <div class="gl"><div class="gl-t">Total time</div><div class="gl-d">
           Request sent to response finished — <em>the headline</em>. Includes however much the model
-          chose to write. Given an identical prompt, a wordier model genuinely does make you wait longer,
-          and we don't correct for that.</div></div>
+          chose to write; a wordier model genuinely does make you wait longer, and we don't correct
+          for that.</div></div>
         <div class="gl"><div class="gl-t">First token</div><div class="gl-d">
-          How long until the first visible word. <em>This includes reasoning time</em> — models that
-          think before answering are silent for this entire stretch. It is not a network-latency figure.</div></div>
-        <div class="gl"><div class="gl-t">Delivery rate</div><div class="gl-d">
-          Output tokens ÷ the writing phase. <em>Not a generation speed.</em> Some providers reason
-          silently and then flush the whole answer at once, which shows up here as an implausibly high
-          rate — it is measuring how fast a finished buffer arrives, not how fast the model writes.
-          Compare it within a model over time, not between vendors.</div></div>
-        <div class="gl"><div class="gl-t">Output tokens</div><div class="gl-d">
-          How much the model wrote. Same prompt every time, so this is its own verbosity — and it is
-          most of what drives total time. <em>Not comparable across Anthropic generations</em>: Opus 4.7
-          changed tokenizers, so the same text counts higher on 4.7+ than on 4.6.</div></div>
-        <div class="gl"><div class="gl-t">Health</div><div class="gl-d">
-          A sanity flag — did a plausible answer come back at all. <em>Not a grade.</em> Nothing runs
-          the code. It exists so a spike can be told apart from a refusal or an empty response, which
-          are excluded from the charts rather than plotted as fast runs.</div></div>
+          How long until the first visible word. <em>Includes reasoning time</em> — models that think
+          before answering are silent for this whole stretch.</div></div>
+        <div class="gl"><div class="gl-t">What we don't measure</div><div class="gl-d">
+          Correctness, quality, or capability. Nothing runs the code. The health flag only separates
+          a slow run from a refused or empty one — <em>it is not a grade</em>.</div></div>
       </div>
     </div>
   </section>
 
 <section>
-    <h2>Output tokens per run</h2>
-    <p class="note">How much each model wrote. Same prompt every time, so this is its own
-      verbosity — and it drives most of the response time above.</p>
-    <div class="card">
-      <div id="legend-tokens" class="legend"></div>
-      <div class="chart-scroll"><div id="chart-tokens"></div></div>
-    </div>
-  </section>
-
-<section>
-    <h2>Generation rate</h2>
-    <p class="note">Words per second once writing starts. If response time rises but this
-      stays flat, the model got wordier; if this falls, the provider got slower.</p>
-    <div class="card">
-      <div id="legend-rate" class="legend"></div>
-      <div class="chart-scroll"><div id="chart-rate"></div></div>
-    </div>
-  </section>
-
-<section>
     <h2>All models</h2>
-    <p class="note">The same numbers as above, as text.</p>
+    <p class="note">Medians across the selected range. Two caveats that don't fit in a column:
+      <strong>rate</strong> is not generation speed for models that reason silently then flush the
+      whole answer at once, and <strong>output tokens</strong> aren't comparable between Opus 4.6 and
+      4.7+ (different tokenizers). Every model runs at <code>medium</code> effort with adaptive
+      thinking.</p>
     <div class="card chart-scroll"><table id="table"></table></div>
   </section>
 
@@ -671,8 +628,7 @@ function renderTiles(series) {
 }
 
 function renderTable(series) {
-  const head = ['Model','Vendor','Last run','Total (med)','First token (med)','Rate (med)',
-                'Output tok (med)','Cost / run','Effort','Health'];
+  const head = ['Model','Total (med)','First token (med)','Output tok (med)','Rate (med)','Cost / run','Health'];
   const rows = series.map(s => {
     const runs = s.runs, last = runs[runs.length - 1] || {};
     const ok = runs.filter(r => r.status === 'ok');
@@ -681,14 +637,12 @@ function renderTable(series) {
       ? '<span class="ok">all ok</span>'
       : `<span class="fail">${bad} degraded</span>`;
     return `<tr>
-      <td>${s.label}</td><td>${s.vendor}</td>
-      <td>${last.ts ? new Date(last.ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric'}) : '—'}</td>
+      <td>${s.label}</td>
       <td>${fmtMs(median(ok.map(r => r.total_ms)))}</td>
       <td>${fmtMs(median(ok.map(r => r.ttft_ms).filter(v => v != null)))}</td>
-      <td>${fmtRate(median(ok.map(r => r.tok_per_s).filter(v => v != null)))}</td>
       <td>${fmtNum(median(ok.map(r => r.output_tokens)))}</td>
+      <td>${fmtRate(median(ok.map(r => r.tok_per_s).filter(v => v != null)))}</td>
       <td>${fmtUsd(last.cost_usd ?? null)}</td>
-      <td>${last.effort || '—'}</td>
       <td>${verdict} · ${runs.length} runs</td>
     </tr>`;
   }).join('');
@@ -728,8 +682,6 @@ function draw() {
     document.getElementById('tiles').innerHTML = '<p class="empty">No runs in this range.</p>';
     document.getElementById('table').innerHTML = '';
     document.getElementById('chart-time').innerHTML = '<p class="empty">No runs in this range.</p>';
-    document.getElementById('chart-tokens').innerHTML = '<p class="empty">No runs in this range.</p>';
-    document.getElementById('chart-rate').innerHTML = '<p class="empty">No runs in this range.</p>';
     document.getElementById('chart-anatomy').innerHTML = '<p class="empty">No runs in this range.</p>';
     return;
   }
@@ -739,10 +691,6 @@ function draw() {
   renderTable(series);
   lineChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
             series, r => r.total_ms, fmtMs, 'Total time');
-  lineChart(document.getElementById('chart-tokens'), document.getElementById('legend-tokens'),
-            series, r => r.output_tokens, fmtNum, 'Output tokens');
-  lineChart(document.getElementById('chart-rate'), document.getElementById('legend-rate'),
-            series, r => r.tok_per_s, fmtRate, 'Tokens / sec');
 }
 
 async function main() {
