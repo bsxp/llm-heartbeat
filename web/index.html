@@ -19,7 +19,7 @@
   gtag('config', 'G-XQ1PW64N22');
 </script>
 <style>
-  .viz-root {
+  :root {
     color-scheme: light;
     --page:           #ffffff;
     --surface-1:      #ffffff;
@@ -42,7 +42,7 @@
     --series-8: #e34948;
   }
   @media (prefers-color-scheme: dark) {
-    :root:where(:not([data-theme="light"])) .viz-root {
+    :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
       --page:           #09090b;
       --surface-1:      #18181b;
@@ -65,11 +65,11 @@
       --series-8: #e66767;
     }
   }
-  :root[data-theme="dark"] .viz-root { --warn-ink: #f59e0b; }
+  :root[data-theme="dark"] { --warn-ink: #f59e0b; }
   @media (prefers-color-scheme: dark) {
-    :root:where(:not([data-theme="light"])) .viz-root { --warn-ink: #f59e0b; }
+    :root:where(:not([data-theme="light"])) { --warn-ink: #f59e0b; }
   }
-  :root[data-theme="dark"] .viz-root {
+  :root[data-theme="dark"] {
     color-scheme: dark;
     --page:           #09090b;
     --surface-1:      #18181b;
@@ -106,7 +106,8 @@
       text-decoration-color: var(--axis); }
   a:hover { text-decoration-color: var(--text-primary); }
 
-  .viz-root { background: var(--page); min-height: 100vh; padding: 40px 24px 96px; }
+  .viz-root { background: var(--page); color: var(--text-primary);
+               min-height: 100vh; padding: 40px 24px 96px; }
   .wrap { max-width: 1060px; margin: 0 auto; }
 
   .topbar { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 40px; }
