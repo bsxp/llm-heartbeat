@@ -89,9 +89,15 @@ another's number.
 
 ## Prompt history
 
+The task is **Conway's Game of Life**: run the acorn pattern for 5000 generations on an
+unbounded grid and count the live cells. Unbounded means a fixed array will not do, so the
+model has to reach for a sparse representation. It is a real algorithmic choice with no
+cryptographic adjacency.
+
 | Hash | Retired | Why it changed |
 |---|---|---|
-| `10471c8576af` | 2026-08-01 | Clause (a) read *"n is squarefree (no prime p has p^2 dividing n)"*. Claude Fable 5 refused it on every run (`stop_reason: refusal`, category `cyber`) — explicit prime-divisibility reads as factorisation. Probing isolated the trigger: keeping *"is a prime number"* in clause (b) passes; only that phrasing fails. Clause (a) was reworded to the equivalent *"not divisible by any perfect square greater than 1"*. **The set S, the answer, and the algorithm are unchanged** — only the wording. Fable 5 now solves it. |
+| `8ce9dff508ea` | 2026-08-01 | A reworded squarefree clause. It did not work — Fable 5 refused 0/6. It was adopted on a single passing probe, which was not evidence: the classifier is stochastic. Listed because the runs it produced are in the data. |
+| `10471c8576af` | 2026-08-01 | *"n is squarefree (no prime p has p^2 dividing n)"* plus a prime digit sum. Fable 5 refused every run, category `cyber` — squarefree testing is factorisation. The wider lesson: the trigger is resemblance to **cryptographic primitives**, not number theory as such. A later candidate seeded by a linear congruential generator was refused just as hard. Rather than keep rewording around a classifier, the task moved to a domain with no such adjacency. |
 
 Runs before a change carry the old hash and form a separate series. The charts draw a
 marker at the boundary so the discontinuity is not mistaken for a change in speed.

@@ -18,26 +18,37 @@ from __future__ import annotations
 import hashlib
 
 TEXT = (
-    "Let S be the set of integers n with 1 <= n <= 8000000 such that BOTH of the "
-    "following hold:\n"
-    "  (a) n is not divisible by any perfect square greater than 1, and\n"
-    "  (b) the sum of the digits of n^3, when n^3 is written in base 9, is a prime "
-    "number.\n\n"
-    "Write a single self-contained Python 3 program that computes |S| and prints it. "
-    "Use only the standard library, and make it efficient enough to finish in well "
+    "Conway's Game of Life runs on an unbounded two-dimensional grid of cells. At each "
+    "step: a live cell with two or three live neighbours stays alive, a dead cell with "
+    "exactly three live neighbours becomes alive, and every other cell is dead in the "
+    "next step. Neighbours are the eight cells touching a cell orthogonally or "
+    "diagonally.\n\n"
+    "Start from the acorn pattern, with live cells at these coordinates:\n"
+    "  (0, 0), (1, 2), (2, -1), (2, 0), (2, 3), (2, 4), (2, 5)\n\n"
+    "Run 5000 generations and print the number of live cells at that point.\n\n"
+    "Write a single self-contained Python 3 program that computes the answer and prints "
+    "it. Use only the standard library, and make it efficient enough to finish in well "
     "under a minute. Reply with the program and a brief note on its time complexity."
 )
 
 # --- prompt history -------------------------------------------------------
-# 10471c8576af  (retired 2026-08-01)  clause (a) read "n is squarefree (no prime p
-#   has p^2 dividing n)". Claude Fable 5 refused it on every run with
-#   stop_reason=refusal, category "cyber" -- explicit prime-divisibility reads as
-#   factorisation. Probing isolated the trigger: keeping "is a prime number" in
-#   clause (b) passes, and only the "no prime p has p^2 dividing n" phrasing fails.
-#   Clause (a) was reworded to the equivalent "not divisible by any perfect square
-#   greater than 1". The set S, the answer, and the algorithm are unchanged; only
-#   the wording differs. Fable 5 now solves it (30s, 2279 output tokens).
-#   Runs before that date carry the old hash and are a separate series.
+# The task is Game of Life because it needs a real algorithmic choice -- the grid
+# is unbounded, so a fixed array does not work and the model has to reach for a
+# sparse representation -- while having nothing to do with primes, factorisation,
+# moduli or pseudo-random generators.
+#
+# 8ce9dff508ea  (retired 2026-08-01, same day)  A reworded squarefree clause. It
+#   did not work: Fable 5 refused 0/6. Adopted on a single passing probe, which
+#   was not evidence -- the classifier is stochastic. Recorded here because the
+#   runs it produced are in the data.
+#
+# 10471c8576af  (retired 2026-08-01)  "n is squarefree (no prime p has p^2
+#   dividing n)" plus a prime digit sum. Fable 5 refused every run, category
+#   "cyber": squarefree testing is factorisation. The wider lesson was that the
+#   trigger is resemblance to cryptographic primitives, not number theory as
+#   such -- a later candidate seeded by a linear congruential generator was
+#   refused just as hard. Rather than keep rewording around a classifier, the
+#   task moved to a domain with no cryptographic adjacency at all.
 
 SHA = hashlib.sha256(TEXT.encode()).hexdigest()[:12]
 
