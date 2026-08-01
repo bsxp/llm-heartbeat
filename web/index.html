@@ -235,6 +235,7 @@
   .dg-mark path { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
   .dg-mark text { fill: var(--text-muted); font-size: 10.5px; }
 
+  .chart-mode { margin-bottom: 14px; }
   .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-secondary); }
 
@@ -311,9 +312,15 @@
 
 <section>
     <h2>Response time</h2>
-    <p class="note">How long each model took to answer, run by run. A hollow dot means the
-      response came back empty or was refused.</p>
+    <p class="note">How long each model took to answer, run by run. Switch to
+      <strong>vs. its own normal</strong> to see each model as a percentage of its own median,
+      which is how the verdict above is decided. A hollow dot means the response came back empty
+      or was refused.</p>
     <div class="card">
+      <div class="filters chart-mode" role="group" aria-label="Chart scale">
+        <button type="button" data-mode="abs" class="on">Seconds</button>
+        <button type="button" data-mode="rel">vs. its own normal</button>
+      </div>
       <div id="legend-time" class="legend"></div>
       <div class="chart-scroll"><div id="chart-time"></div></div>
     </div>
@@ -464,7 +471,7 @@ function niceTicks(max, count = 5) {
   return out;
 }
 
-function lineChart(mount, legendMount, series, pick, formatter, yTitle) {
+function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine) {
   const W = Math.max(760, mount.clientWidth || 760), H = 320;
   const M = { t: 14, r: 18, b: 34, l: 62 };
   const iw = W - M.l - M.r, ih = H - M.t - M.b;
@@ -506,6 +513,11 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle) {
     svg.push(`<text class="tick" x="${M.l-9}" y="${Y(v)+4}" text-anchor="end">${formatter(v)}</text>`);
   });
   svg.push(`<line class="axis-line" x1="${M.l}" y1="${M.t+ih}" x2="${M.l+iw}" y2="${M.t+ih}"/>`);
+  if (refLine != null && refLine <= yMax) {
+    svg.push(`<line x1="${M.l}" y1="${Y(refLine)}" x2="${M.l+iw}" y2="${Y(refLine)}" `
+           + `stroke="var(--text-secondary)" stroke-width="1" stroke-dasharray="4 3"/>`);
+    svg.push(`<text class="tick" x="${M.l+iw}" y="${Y(refLine)-6}" text-anchor="end">its normal</text>`);
+  }
   // Anchor the outer ticks inward so neither label is clipped by the viewBox.
   xTicks.forEach((t, i) => {
     const anchor = i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle';
@@ -626,10 +638,16 @@ function sparkline(runs, color) {
 function judge(latest, prior) {
   if (prior.length < MIN_BASELINE) return { state: 'unknown', n: prior.length };
   const f = fences(prior);
-  const pct = Math.abs(Math.round(((latest - f.mid) / f.mid) * 100));
-  if (latest > f.hi) return { state: 'slow', pct, mid: f.mid };
-  if (latest < f.lo) return { state: 'fast', pct, mid: f.mid };
-  return { state: 'ok', pct, mid: f.mid };
+  const ratio = latest / f.mid;
+  const pct = Math.abs(Math.round((ratio - 1) * 100));
+  // Two independent tests, either of which counts:
+  //   1. outside the model's own fence  -- catches subtle drift in steady models
+  //   2. more than double its median    -- backstop, because a very erratic
+  //      model gets a huge fence and can otherwise hide behind its own noise
+  //      (Opus 4.6 once ran 2.1x its median and cleared the fence by 0.9s)
+  if (latest > f.hi || ratio > 2) return { state: 'slow', pct, mid: f.mid, ratio };
+  if (latest < f.lo) return { state: 'fast', pct, mid: f.mid, ratio };
+  return { state: 'ok', pct, mid: f.mid, ratio };
 }
 
 function verdict(latest, prior) {
@@ -655,18 +673,24 @@ function renderVerdict(series) {
     // rather than calling a model slow off two or three samples.
     const j = judge(ok[ok.length - 1].total_ms, prior);
     if (j.state === 'unknown') { unknown.push(s.label); return; }
-    (j.state === 'slow' ? slow : fine).push(s.label);
+    if (j.state === 'slow') slow.push({ label: s.label, pct: j.pct });
+    else fine.push(s.label);
   });
 
   const list = a => a.length === 1 ? a[0]
     : a.length === 2 ? `${a[0]} or ${a[1]}`
     : a.slice(0, -1).join(', ') + ', or ' + a[a.length - 1];
 
+  slow.sort((a, b) => b.pct - a.pct);            // worst first
+  const slowNames = slow.map(x => x.label);
+
   let line, sub;
   if (slow.length) {
-    line = `Probably — if you're using <span class="slow">${list(slow)}</span>.`;
-    sub = `Otherwise, probably not. ${slow.length === 1 ? 'That model is' : 'Those are'} `
-        + `answering slower than usual right now; the other ${fine.length} are normal.`;
+    line = `Probably — if you're using <span class="slow">${list(slowNames)}</span>.`;
+    sub = `Otherwise, probably not. ${slow.length === 1
+        ? `${slowNames[0]} is running about ${slow[0].pct}% over its usual time`
+        : `They are running ${slow.map(x => x.pct + '%').join(' and ')} over their usual times`}`
+        + ` right now; the other ${fine.length} are normal.`;
   } else if (down.length && !fine.length) {
     line = `Can't tell right now.`;
     sub = `No model has completed a run recently.`;
@@ -770,6 +794,7 @@ applyTheme((() => { try { return localStorage.getItem('lhb-theme') || 'system'; 
 
 let DATA = null;
 let HOURS = 24;
+let SCALE = 'abs';   // 'abs' = seconds, 'rel' = % of each model's own median
 
 function draw() {
   if (!DATA) return;
@@ -798,8 +823,23 @@ function draw() {
   anatomyChart(document.getElementById('chart-anatomy'), series);
   renderTiles(series);
   renderTable(series);
-  lineChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
-            series, r => r.total_ms, fmtMs, 'Total time');
+  if (SCALE === 'rel') {
+    // Divide each model by its OWN median so the lines become comparable as
+    // deviations. Absolute seconds are not comparable across models -- one
+    // model's normal is another's outage -- so this is the view that matches
+    // how the verdict is actually decided.
+    const rel = series.map(sr => {
+      const base = median(sr.runs.filter(r => r.status === 'ok' && r.total_ms != null)
+                                 .map(r => r.total_ms));
+      return { ...sr, runs: sr.runs.map(r => ({ ...r,
+        rel_pct: base && r.total_ms != null ? (r.total_ms / base) * 100 : null })) };
+    });
+    lineChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
+              rel, r => r.rel_pct, v => Math.round(v) + '%', 'vs own normal', 100);
+  } else {
+    lineChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
+              series, r => r.total_ms, fmtMs, 'Total time');
+  }
 }
 
 async function main() {
@@ -812,9 +852,17 @@ async function main() {
       'Could not load results.json — no runs have been published yet.';
     return;
   }
-  document.querySelectorAll('.filters button').forEach(btn => {
+  document.querySelectorAll('.chart-mode button').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.filters button').forEach(b => b.classList.remove('on'));
+      document.querySelectorAll('.chart-mode button').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      SCALE = btn.dataset.mode;
+      draw();
+    });
+  });
+  document.querySelectorAll('.filters:not(.chart-mode) button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filters:not(.chart-mode) button').forEach(b => b.classList.remove('on'));
       btn.classList.add('on');
       HOURS = Number(btn.dataset.hours);
       draw();
