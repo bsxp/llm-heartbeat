@@ -54,8 +54,8 @@ a request to write a program solving a non-trivial counting problem. It's a real
 reasoning workload on purpose; `"say hello"` would measure almost nothing, and slowdowns
 tend to surface under load.
 
-A SHA-256 prefix of the prompt is recorded on **every single run** and displayed in the
-dashboard header. If the prompt ever changes, the hash changes, and the numbers before
+A SHA-256 prefix of the prompt is recorded on **every single run**, shown in the method
+section, and marked on the charts wherever it changes. If the prompt ever changes, the hash changes, and the numbers before
 and after are a different series. This is the main thing that keeps the chart honest, and
 it's why the prompt file carries a do-not-edit warning.
 
@@ -86,6 +86,15 @@ public precisely so the numbers can be audited rather than trusted.
 
 **Each model runs in its own isolated invocation**, so a slow provider can't inflate
 another's number.
+
+## Prompt history
+
+| Hash | Retired | Why it changed |
+|---|---|---|
+| `10471c8576af` | 2026-08-01 | Clause (a) read *"n is squarefree (no prime p has p^2 dividing n)"*. Claude Fable 5 refused it on every run (`stop_reason: refusal`, category `cyber`) — explicit prime-divisibility reads as factorisation. Probing isolated the trigger: keeping *"is a prime number"* in clause (b) passes; only that phrasing fails. Clause (a) was reworded to the equivalent *"not divisible by any perfect square greater than 1"*. **The set S, the answer, and the algorithm are unchanged** — only the wording. Fable 5 now solves it. |
+
+Runs before a change carry the old hash and form a separate series. The charts draw a
+marker at the boundary so the discontinuity is not mistaken for a change in speed.
 
 ## Known limitations
 

@@ -380,7 +380,8 @@
     <div class="card">
       <ul class="rules">
         <li><strong>One fixed prompt.</strong> A hash of it (<code id="psha">&mdash;</code>) is
-          stored on every run, so any edit to it shows up in the data.</li>
+          stored on every run, and the charts mark the point where it changes, so an edit
+          shows up as a break rather than passing for a change in speed.</li>
         <li><strong>Settings are pinned.</strong> Reasoning effort and thinking mode are fixed per
           model and recorded on each run. Both affect latency.</li>
         <li><strong>Nothing is smoothed.</strong> No averaging, no adjusting for length. A model
@@ -498,7 +499,7 @@ function niceTicks(max, count = 5) {
   return out;
 }
 
-function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine, forceMax, height) {
+function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine, forceMax, height, breaks) {
   const W = Math.max(760, mount.clientWidth || 760), H = height || 320;
   const M = { t: 14, r: 18, b: 34, l: 62 };
   const iw = W - M.l - M.r, ih = H - M.t - M.b;
@@ -551,6 +552,11 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
     svg.push(`<text class="tick" x="${X(t)}" y="${M.t+ih+20}" text-anchor="${anchor}">${xLabel(t)}</text>`);
   });
 
+  (breaks || []).filter(t => t >= t0 && t <= t1).forEach(t => {
+    svg.push(`<line x1="${X(t)}" y1="${M.t}" x2="${X(t)}" y2="${M.t+ih}" `
+           + `stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="2 3"/>`);
+    svg.push(`<text class="tick" x="${X(t)+5}" y="${M.t+11}">prompt changed</text>`);
+  });
   svg.push(`<line class="crosshair" id="ch-${mount.id}" x1="0" y1="${M.t}" x2="0" y2="${M.t+ih}" style="opacity:0"/>`);
 
   prepared.forEach(s => {
@@ -597,6 +603,18 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
 // vendor cannot work (six steps of one hue land at deltaE ~6 against a floor of
 // 15, indistinguishable even with full colour vision), but faceting gets the
 // same vendor grouping without asking hue to carry it.
+// Runs carry the hash of the prompt that produced them. When that changes the
+// series is no longer continuous, so mark it -- otherwise the discontinuity
+// looks like a latency event rather than a change of question.
+function promptBreaks(series) {
+  const seen = series.flatMap(s => s.runs.map(r => ({ t: Date.parse(r.ts), sha: r.prompt_sha })))
+                     .filter(r => r.sha).sort((a, b) => a.t - b.t);
+  const out = [];
+  for (let i = 1; i < seen.length; i++)
+    if (seen[i].sha !== seen[i - 1].sha) out.push(seen[i].t);
+  return out;
+}
+
 function facetedChart(mount, legendMount, series, pick, formatter, refLine) {
   if (legendMount) legendMount.innerHTML = '';
   const byVendor = {};
@@ -617,8 +635,9 @@ function facetedChart(mount, legendMount, series, pick, formatter, refLine) {
        <div class="chart-scroll"><div id="facet-${vi}"></div></div>
      </div>`).join('');
 
+  const breaks = promptBreaks(series);
   Object.entries(byVendor).forEach(([vendor, models], vi) => {
-    lineChart(document.getElementById(`facet-${vi}`), null, models, pick, formatter, vendor, refLine, sharedMax, 210);
+    lineChart(document.getElementById(`facet-${vi}`), null, models, pick, formatter, vendor, refLine, sharedMax, 210, breaks);
   });
 }
 

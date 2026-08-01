@@ -20,14 +20,24 @@ import hashlib
 TEXT = (
     "Let S be the set of integers n with 1 <= n <= 8000000 such that BOTH of the "
     "following hold:\n"
-    "  (a) n is squarefree (no prime p has p^2 dividing n), and\n"
+    "  (a) n is not divisible by any perfect square greater than 1, and\n"
     "  (b) the sum of the digits of n^3, when n^3 is written in base 9, is a prime "
     "number.\n\n"
-    "Write a single self-contained Python 3 program that computes |S| (the number of "
-    "integers in S) and prints it. Use only the standard library, and make it "
-    "efficient enough to finish in well under a minute. Reply with the program and a "
-    "brief note on its time complexity."
+    "Write a single self-contained Python 3 program that computes |S| and prints it. "
+    "Use only the standard library, and make it efficient enough to finish in well "
+    "under a minute. Reply with the program and a brief note on its time complexity."
 )
+
+# --- prompt history -------------------------------------------------------
+# 10471c8576af  (retired 2026-08-01)  clause (a) read "n is squarefree (no prime p
+#   has p^2 dividing n)". Claude Fable 5 refused it on every run with
+#   stop_reason=refusal, category "cyber" -- explicit prime-divisibility reads as
+#   factorisation. Probing isolated the trigger: keeping "is a prime number" in
+#   clause (b) passes, and only the "no prime p has p^2 dividing n" phrasing fails.
+#   Clause (a) was reworded to the equivalent "not divisible by any perfect square
+#   greater than 1". The set S, the answer, and the algorithm are unchanged; only
+#   the wording differs. Fable 5 now solves it (30s, 2279 output tokens).
+#   Runs before that date carry the old hash and are a separate series.
 
 SHA = hashlib.sha256(TEXT.encode()).hexdigest()[:12]
 
