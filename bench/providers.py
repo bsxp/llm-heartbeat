@@ -102,8 +102,15 @@ def run_anthropic(cfg: dict[str, Any], text: str) -> RunResult:
     out.cached_input_tokens = getattr(message.usage, "cache_read_input_tokens", 0) or 0
 
     if message.stop_reason == "refusal":
+        # Capture the explanation, not just the category: "cyber" alone does not
+        # tell you WHICH part of a prompt tripped a classifier, and without it a
+        # refusal is undiagnosable.
+        details = message.stop_details
         out.status = "refusal"
-        out.error = f"refusal: {getattr(message.stop_details, 'category', 'unknown')}"
+        out.error = "refusal[{}]: {}".format(
+            getattr(details, "category", "unknown") or "uncategorised",
+            (getattr(details, "explanation", None) or "no explanation given")[:400],
+        )
         return out
 
     out.text = "".join(b.text for b in message.content if b.type == "text")
