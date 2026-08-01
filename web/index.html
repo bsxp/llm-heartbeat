@@ -131,6 +131,22 @@
   .gl-d em { color: var(--text-primary); font-style: normal; font-weight: 600; }
   @media (max-width: 620px) { .gl { grid-template-columns: 1fr; gap: 3px; } }
 
+
+  .dg rect { fill: var(--surface-1); stroke: var(--axis); stroke-width: 1; }
+  .dg text { fill: var(--text-primary); font-size: 12.5px; font-weight: 600; text-anchor: middle; }
+  .dg .dg-sub { fill: var(--text-muted); font-size: 10.5px; font-weight: 400; }
+  .dg-arrow path { stroke: var(--axis); stroke-width: 1.5; fill: none; marker-end: url(#dgarrow); }
+  .dg-edge { fill: var(--text-muted); font-size: 10.5px; }
+  .dg-h { fill: var(--text-secondary); font-size: 11px; font-weight: 600; }
+  .dg-quiet { fill: var(--text-muted); opacity: .30; }
+  .dg-write { fill: var(--series-1); }
+  .dg-seglab text { fill: var(--text-secondary); font-size: 11px; text-anchor: middle; }
+  .dg-seglab .dg-onfill { fill: #fff; font-weight: 600; }
+  .dg-brk path { stroke: var(--axis); stroke-width: 1.5; fill: none; }
+  .dg-brk text { fill: var(--text-secondary); font-size: 11.5px; text-anchor: middle; }
+  .dg-mark path { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
+  .dg-mark text { fill: var(--text-muted); font-size: 10.5px; }
+
   .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-secondary); }
 
@@ -165,6 +181,7 @@
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute"><defs><marker id="dgarrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--axis)"/></marker></defs></svg>
 <div class="viz-root">
 <div class="wrap">
 
@@ -218,6 +235,66 @@
           more and therefore took longer, that is the number — because that is the wait.</div>
       </div>
     </div>
+    <div class="card" style="margin-top:14px">
+      <div class="chart-scroll">
+      <svg viewBox="0 -4 900 272" width="900" style="max-width:100%" role="img"
+           aria-label="Diagram: a scheduler triggers a dispatcher, which fans out to one runner per model; each runner makes one streaming request to a provider. The clock starts at the request, marks the first visible word, and stops when the stream ends.">
+        <!-- topology row -->
+        <g class="dg">
+          <rect x="6"   y="14" width="150" height="46" rx="7"/>
+          <text x="81"  y="33">Scheduler</text><text x="81" y="49" class="dg-sub">every hour</text>
+          <rect x="196" y="14" width="140" height="46" rx="7"/>
+          <text x="266" y="33">Dispatcher</text><text x="266" y="49" class="dg-sub">fans out</text>
+          <rect x="376" y="14" width="150" height="46" rx="7"/>
+          <text x="451" y="33">Runner</text><text x="451" y="49" class="dg-sub">one per model</text>
+          <rect x="566" y="14" width="328" height="46" rx="7"/>
+          <text x="730" y="33">Provider API &#8594; model</text><text x="730" y="49" class="dg-sub">someone else&#8217;s infrastructure</text>
+        </g>
+        <g class="dg-arrow">
+          <path d="M160 37 H190"/><path d="M340 37 H370"/><path d="M530 37 H560"/>
+          <text x="545" y="9" class="dg-edge" text-anchor="middle">1 streaming request</text>
+        </g>
+
+        <!-- measured span -->
+        <text x="6" y="98" class="dg-h">What the clock covers</text>
+        <g class="dg-seg">
+          <rect x="6"   y="112" width="126" height="26" rx="3" class="dg-quiet"/>
+          <rect x="136" y="112" width="150" height="26" rx="3" class="dg-quiet"/>
+          <rect x="290" y="112" width="270" height="26" rx="3" class="dg-quiet"/>
+          <rect x="564" y="112" width="330" height="26" rx="3" class="dg-write"/>
+        </g>
+        <g class="dg-seglab">
+          <text x="69"  y="129">network</text>
+          <text x="211" y="129">provider queue</text>
+          <text x="425" y="129">reasoning (silent)</text>
+          <text x="729" y="129" class="dg-onfill">writing</text>
+        </g>
+
+        <!-- brackets -->
+        <g class="dg-brk">
+          <path d="M6 152 V162 H560 V152"/>
+          <text x="283" y="178">first token &#8212; you see nothing yet</text>
+          <path d="M6 196 V206 H894 V196"/>
+          <text x="450" y="222">total time &#8212; the headline</text>
+        </g>
+        <g class="dg-mark">
+          <path d="M6 106 V152"/><path d="M560 106 V152"/><path d="M894 106 V196"/>
+          <text x="10"  y="250" text-anchor="start">clock starts</text>
+          <text x="560" y="250" text-anchor="middle">first visible word</text>
+          <text x="894" y="250" text-anchor="end">clock stops</text>
+        </g>
+      </svg>
+      </div>
+      <p class="note" style="margin:14px 0 0">
+        Everything between the two marks is counted — including network round-trip and any
+        queueing on the provider&#8217;s side. We measure from outside, so we
+        <strong>cannot separate</strong> &#8220;the model was slow&#8221; from &#8220;the network was
+        slow&#8221; from &#8220;we were queued&#8221;, and we don&#8217;t claim to. Runs execute from a
+        single AWS region, which keeps that overhead roughly constant — so the
+        <em>changes</em> are meaningful even though the absolute numbers carry a fixed tax.
+      </p>
+    </div>
+
   </section>
 
   <section>
