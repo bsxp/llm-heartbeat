@@ -175,6 +175,15 @@
               color: var(--text-secondary); }
   .tile-row span:last-child { font-variant-numeric: tabular-nums; color: var(--text-primary); }
 
+  .hero { margin: 0 0 36px; }
+  .hero-line { font-size: 1.55rem; font-weight: 600; letter-spacing: -0.02em;
+               line-height: 1.3; margin: 0; max-width: 24ch; }
+  .hero-line .slow { color: var(--critical); }
+  .hero-sub { margin: 12px 0 0; font-size: 0.9rem; color: var(--text-secondary);
+              line-height: 1.6; max-width: 62ch; }
+  .hero-sub b { color: var(--text-primary); font-weight: 550; }
+  .hero-meta { margin: 10px 0 0; font-size: 0.78rem; color: var(--text-muted); }
+
   .filters { display: inline-flex; gap: 2px; padding: 2px; margin: 0;
              background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
   .filters button {
@@ -289,6 +298,10 @@
     </button>
   </div>
   </div>
+
+  <section class="hero" id="hero" aria-live="polite">
+    <p class="hero-line">Checking&hellip;</p>
+  </section>
 
   <div class="filters" role="group" aria-label="Time range">
     <button type="button" data-hours="24" class="on">24 hours</button>
@@ -579,6 +592,25 @@ function anatomyChart(mount, series) {
 // own baseline.
 const MIN_BASELINE = 5;   // below this, a "vs typical" delta is just noise
 
+// A fixed percentage is the wrong test: these models swing 20-30% run to run
+// on their own, so a flat +20% rule flags normal variance as a regression.
+// Compare instead against each model's OWN spread, using the standard outlier
+// fence (quartile +/- 1.5x IQR). A steady model gets a tight band, a jumpy one
+// a wide band, and "unusual" means unusual for that model.
+function quantile(sorted, q) {
+  const i = (sorted.length - 1) * q, lo = Math.floor(i), hi = Math.ceil(i);
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+}
+function fences(values) {
+  const v = [...values].sort((a, b) => a - b);
+  const q1 = quantile(v, 0.25), q3 = quantile(v, 0.75), iqr = q3 - q1;
+  const mid = median(v);
+  // With few samples the IQR can collapse to ~0; fall back to a proportional
+  // band so a tiny spread does not make every run look like an outlier.
+  const pad = Math.max(1.5 * iqr, mid * 0.35);
+  return { lo: q1 - pad, hi: q3 + pad, mid };
+}
+
 function sparkline(runs, color) {
   const pts = runs.slice(-14).map(r => r.total_ms);
   if (pts.length < 2) return '';
@@ -591,15 +623,67 @@ function sparkline(runs, color) {
        + `stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
-function verdict(latest, baseline, n) {
-  if (n < MIN_BASELINE)
-    return { cls: 'v-wait', icon: '&#9679;', text: `building baseline &middot; ${n} run${n === 1 ? '' : 's'}` };
-  const d = (latest - baseline) / baseline;
-  const pct = Math.abs(Math.round(d * 100));
-  if (d > 0.5)  return { cls: 'v-bad',  icon: '&#9650;', text: `${pct}% slower than usual` };
-  if (d > 0.2)  return { cls: 'v-warn', icon: '&#9650;', text: `${pct}% slower than usual` };
-  if (d < -0.2) return { cls: 'v-good', icon: '&#9660;', text: `${pct}% faster than usual` };
+function judge(latest, prior) {
+  if (prior.length < MIN_BASELINE) return { state: 'unknown', n: prior.length };
+  const f = fences(prior);
+  const pct = Math.abs(Math.round(((latest - f.mid) / f.mid) * 100));
+  if (latest > f.hi) return { state: 'slow', pct, mid: f.mid };
+  if (latest < f.lo) return { state: 'fast', pct, mid: f.mid };
+  return { state: 'ok', pct, mid: f.mid };
+}
+
+function verdict(latest, prior) {
+  const j = judge(latest, prior);
+  if (j.state === 'unknown')
+    return { cls: 'v-wait', icon: '&#9679;', text: `building baseline &middot; ${j.n} run${j.n === 1 ? '' : 's'}` };
+  if (j.state === 'slow') return { cls: 'v-bad',  icon: '&#9650;', text: `${j.pct}% slower than usual` };
+  if (j.state === 'fast') return { cls: 'v-good', icon: '&#9660;', text: `${j.pct}% faster than usual` };
   return { cls: 'v-ok', icon: '&#9679;', text: 'within its usual range' };
+}
+
+function renderVerdict(series) {
+  const el = document.getElementById('hero');
+  const slow = [], down = [], unknown = [], fine = [];
+
+  series.forEach(s => {
+    const ok = s.runs.filter(r => r.status === 'ok' && r.total_ms != null);
+    const lastAny = s.runs[s.runs.length - 1];
+    if (lastAny && lastAny.status !== 'ok') { down.push(s.label); return; }
+    if (!ok.length) { down.push(s.label); return; }
+    const prior = ok.slice(0, -1).map(r => r.total_ms);
+    // Same bar the cards use: below the baseline threshold we say nothing
+    // rather than calling a model slow off two or three samples.
+    const j = judge(ok[ok.length - 1].total_ms, prior);
+    if (j.state === 'unknown') { unknown.push(s.label); return; }
+    (j.state === 'slow' ? slow : fine).push(s.label);
+  });
+
+  const list = a => a.length === 1 ? a[0]
+    : a.length === 2 ? `${a[0]} or ${a[1]}`
+    : a.slice(0, -1).join(', ') + ', or ' + a[a.length - 1];
+
+  let line, sub;
+  if (slow.length) {
+    line = `Probably — if you're using <span class="slow">${list(slow)}</span>.`;
+    sub = `Otherwise, probably not. ${slow.length === 1 ? 'That model is' : 'Those are'} `
+        + `answering slower than usual right now; the other ${fine.length} are normal.`;
+  } else if (down.length && !fine.length) {
+    line = `Can't tell right now.`;
+    sub = `No model has completed a run recently.`;
+  } else if (!fine.length) {
+    line = `Not enough data yet.`;
+    sub = `Still building a baseline for each model. Come back in an hour.`;
+  } else {
+    line = `Probably not.`;
+    sub = `All ${fine.length} models are answering within their usual range.`;
+  }
+  if (down.length) sub += ` <b>${list(down)}</b> ${down.length === 1 ? 'is' : 'are'} not responding at all.`;
+  if (unknown.length) sub += ` ${unknown.length} still building a baseline.`;
+
+  const t = series.flatMap(s => s.runs).map(r => Date.parse(r.ts)).sort((a, b) => b - a)[0];
+  el.innerHTML = `<p class="hero-line">${line}</p><p class="hero-sub">${sub}</p>`
+    + (t ? `<p class="hero-meta">as of ${new Date(t).toLocaleString('en-US',
+        { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>` : '');
 }
 
 function renderTiles(series) {
@@ -623,7 +707,7 @@ function renderTiles(series) {
     // Baseline excludes the run being judged, or a model is compared to itself.
     const prior = ok.slice(0, -1).map(r => r.total_ms);
     const base = prior.length ? median(prior) : null;
-    const v = base == null ? verdict(0, 1, ok.length) : verdict(latest.total_ms, base, prior.length);
+    const v = verdict(latest.total_ms, prior);
 
     return `<div class="tile">
       <div class="tile-head"><span class="swatch" style="background:${color}"></span>
@@ -691,6 +775,8 @@ function draw() {
       { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
   if (!series.length) {
+    document.getElementById('hero').innerHTML =
+      '<p class="hero-line">No data in this range.</p>';
     document.getElementById('tiles').innerHTML = '<p class="empty">No runs in this range.</p>';
     document.getElementById('table').innerHTML = '';
     document.getElementById('chart-time').innerHTML = '<p class="empty">No runs in this range.</p>';
@@ -698,6 +784,7 @@ function draw() {
     return;
   }
   document.getElementById('psha').textContent = DATA.prompt_sha || '—';
+  renderVerdict(series);
   anatomyChart(document.getElementById('chart-anatomy'), series);
   renderTiles(series);
   renderTable(series);
