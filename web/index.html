@@ -258,6 +258,11 @@
   .dg-mark text { fill: var(--text-muted); font-size: 10.5px; }
 
   .chart-mode { margin-bottom: 14px; }
+  .facet + .facet { margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .facet-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 6px; }
+  .facet-name { font-size: 0.74rem; font-weight: 600; color: var(--text-primary);
+                text-transform: uppercase; letter-spacing: .05em; }
+  .facet-legend { display: flex; flex-wrap: wrap; gap: 14px; }
   .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-secondary); }
 
@@ -493,8 +498,8 @@ function niceTicks(max, count = 5) {
   return out;
 }
 
-function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine) {
-  const W = Math.max(760, mount.clientWidth || 760), H = 320;
+function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine, forceMax, height) {
+  const W = Math.max(760, mount.clientWidth || 760), H = height || 320;
   const M = { t: 14, r: 18, b: 34, l: 62 };
   const iw = W - M.l - M.r, ih = H - M.t - M.b;
 
@@ -505,7 +510,7 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine)
       .map(r => ({ t: Date.parse(r.ts), v: pick(r), healthy: r.health === 'ok', run: r }))
   })).filter(s => s.points.length);
 
-  legendMount.innerHTML = prepared.map(s =>
+  if (legendMount) legendMount.innerHTML = prepared.map(s =>
     `<span class="legend-item"><span class="swatch" style="background:${s.color}"></span>${s.label}</span>`
   ).join('');
 
@@ -514,7 +519,7 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine)
   const all = prepared.flatMap(s => s.points);
   const t0 = Math.min(...all.map(p => p.t)), t1 = Math.max(...all.map(p => p.t));
   const span = Math.max(t1 - t0, 1);
-  const ticks = niceTicks(Math.max(...all.map(p => p.v)));
+  const ticks = niceTicks(forceMax != null ? forceMax : Math.max(...all.map(p => p.v)));
   const yMax = ticks[ticks.length - 1];
   const X = t => M.l + ((t - t0) / span) * iw;
   const Y = v => M.t + ih - (v / yMax) * ih;
@@ -585,6 +590,36 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine)
     tooltip.style.top = (ev.clientY + window.scrollY - tb.height / 2) + 'px';
   });
   node.addEventListener('mouseleave', () => { tooltip.style.opacity = 0; cross.style.opacity = 0; });
+}
+
+// Colour only has to separate models WITHIN a vendor, so each facet restarts
+// at slot 1. That is what removes the 8-model ceiling: a single-hue family per
+// vendor cannot work (six steps of one hue land at deltaE ~6 against a floor of
+// 15, indistinguishable even with full colour vision), but faceting gets the
+// same vendor grouping without asking hue to carry it.
+function facetedChart(mount, legendMount, series, pick, formatter, refLine) {
+  if (legendMount) legendMount.innerHTML = '';
+  const byVendor = {};
+  series.forEach(s => (byVendor[s.vendor] ||= []).push(s));
+
+  const all = series.flatMap(s => s.runs.filter(r => r.status === 'ok' && pick(r) != null).map(pick));
+  if (!all.length) { mount.innerHTML = '<p class="empty">No completed runs yet.</p>'; return; }
+  const sharedMax = Math.max(...all);   // shared y so magnitudes stay comparable
+
+  mount.innerHTML = Object.entries(byVendor).map(([vendor, models], vi) =>
+    `<div class="facet">
+       <div class="facet-head">
+         <span class="facet-name">${vendor}</span>
+         <span class="facet-legend">${models.map((m, i) =>
+           `<span class="legend-item"><span class="swatch" style="background:${colorOf(i)}"></span>${m.label}</span>`
+         ).join('')}</span>
+       </div>
+       <div class="chart-scroll"><div id="facet-${vi}"></div></div>
+     </div>`).join('');
+
+  Object.entries(byVendor).forEach(([vendor, models], vi) => {
+    lineChart(document.getElementById(`facet-${vi}`), null, models, pick, formatter, vendor, refLine, sharedMax, 210);
+  });
 }
 
 function anatomyChart(mount, series) {
@@ -856,11 +891,11 @@ function draw() {
       return { ...sr, runs: sr.runs.map(r => ({ ...r,
         rel_pct: base && r.total_ms != null ? (r.total_ms / base) * 100 : null })) };
     });
-    lineChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
-              rel, r => r.rel_pct, v => Math.round(v) + '%', 'vs own normal', 100);
+    facetedChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
+                 rel, r => r.rel_pct, v => Math.round(v) + '%', 100);
   } else {
-    lineChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
-              series, r => r.total_ms, fmtMs, 'Total time');
+    facetedChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
+                 series, r => r.total_ms, fmtMs);
   }
 }
 

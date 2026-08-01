@@ -146,7 +146,7 @@
       "base_url": "https://api.x.ai/v1",
       "price_in": 2.0,
       "price_out": 6.0,
-      "enabled": false
+      "enabled": true
     },
     {
       "key": "deepseek",
