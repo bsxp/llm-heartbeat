@@ -75,7 +75,11 @@ unlogged change there would look exactly like a provider regression.
 public precisely so the numbers can be audited rather than trusted.
 
 - The clock starts immediately before the request and stops when the stream closes.
-- Time-to-first-token is stamped on the first content delta.
+- Time-to-first-token is stamped on the first **visible text** delta -- never on a
+  reasoning/thinking delta. Reasoning models produce no user-visible output until
+  reasoning finishes, so this keeps TTFT the same quantity across vendors: how long
+  until words appear. It does mean TTFT *includes* reasoning time, which is the honest
+  number for "when do I see something" but is not a pure network-latency figure.
 - Tokens/sec is output tokens ÷ (total − TTFT), so the first-token wait doesn't drag the
   rate down.
 - Token counts come from each provider's own usage reporting, never estimated.

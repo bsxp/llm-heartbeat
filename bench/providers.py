@@ -82,7 +82,16 @@ def run_anthropic(cfg: dict[str, Any], text: str) -> RunResult:
         messages=[{"role": "user", "content": text}],
     ) as stream:
         for event in stream:
-            if event.type == "content_block_delta":
+            # Mark on VISIBLE text only, never on thinking deltas. Two reasons:
+            # thinking is streamed with empty text under the default
+            # display="omitted", so a thinking delta times something nobody
+            # sees; and OpenAI-style reasoning models emit no content until
+            # reasoning finishes. Marking on text in both keeps TTFT the same
+            # quantity across vendors: "how long until words appear".
+            if (
+                event.type == "content_block_delta"
+                and getattr(event.delta, "type", None) == "text_delta"
+            ):
                 clock.mark_first_token()
         message = stream.get_final_message()
 
