@@ -339,7 +339,9 @@
 
 <section>
     <h2>Response time</h2>
-    <p class="note">How long each model took to answer, run by run. Switch to
+    <p class="note">How long each model took to answer, run by run, on a <strong>log scale</strong> —
+      responses range from seconds to minutes, and a linear axis lets one spike flatten
+      everything else. Switch to
       <strong>vs. its own normal</strong> to see each model as a percentage of its own median,
       which is how the verdict above is decided. A hollow dot means the response came back empty
       or was refused.</p>
@@ -487,6 +489,20 @@ const median = xs => {
 };
 const colorOf = i => `var(--series-${(i % SLOTS) + 1})`;
 
+// Latency spans orders of magnitude -- 6s to 4min in one panel -- so a linear
+// axis lets a single spike flatten everything else against the baseline. Log
+// ticks step 1/2/5 per decade. The axis is labelled: a log scale that is not
+// announced misleads, because equal distances are not equal seconds.
+function logTicks(lo, hi) {
+  const out = [];
+  for (let d = Math.floor(Math.log10(lo)); d <= Math.ceil(Math.log10(hi)); d++)
+    for (const m of [1, 2, 5]) {
+      const v = m * Math.pow(10, d);
+      if (v >= lo * 0.999 && v <= hi * 1.001) out.push(v);
+    }
+  return out;
+}
+
 function niceTicks(max, count = 5) {
   if (!(max > 0)) return [0, 1];
   const raw = max / count;
@@ -499,7 +515,7 @@ function niceTicks(max, count = 5) {
   return out;
 }
 
-function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine, forceMax, height, breaks) {
+function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine, forceMax, height, breaks, scale) {
   const W = Math.max(760, mount.clientWidth || 760), H = height || 320;
   const M = { t: 14, r: 18, b: 34, l: 62 };
   const iw = W - M.l - M.r, ih = H - M.t - M.b;
@@ -520,10 +536,30 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
   const all = prepared.flatMap(s => s.points);
   const t0 = Math.min(...all.map(p => p.t)), t1 = Math.max(...all.map(p => p.t));
   const span = Math.max(t1 - t0, 1);
-  const ticks = niceTicks(forceMax != null ? forceMax : Math.max(...all.map(p => p.v)));
-  const yMax = ticks[ticks.length - 1];
+  const logScale = scale === 'log';
+  const dataMax = forceMax != null ? forceMax : Math.max(...all.map(p => p.v));
+  let ticks, yMin, yMax, Yfrac;
+  if (logScale) {
+    const dataMin = Math.min(...all.map(p => p.v));
+    // Snap to the nearest 1/2/5 step, not a whole decade -- rounding 3.5 min up
+    // to 16.7 min left half the panel empty.
+    const step = (v, up) => {
+      const d = Math.floor(Math.log10(v));
+      const cand = [1, 2, 5, 10].map(m => m * Math.pow(10, d));
+      return up ? cand.find(c => c >= v * 0.999) : [...cand].reverse().find(c => c <= v * 1.001);
+    };
+    yMin = step(Math.max(1, dataMin), false);
+    yMax = step(dataMax, true);
+    ticks = logTicks(yMin, yMax);
+    const lg = Math.log10(yMax) - Math.log10(yMin);
+    Yfrac = v => (Math.log10(Math.max(v, yMin)) - Math.log10(yMin)) / lg;
+  } else {
+    ticks = niceTicks(dataMax);
+    yMin = 0; yMax = ticks[ticks.length - 1];
+    Yfrac = v => v / yMax;
+  }
   const X = t => M.l + ((t - t0) / span) * iw;
-  const Y = v => M.t + ih - (v / yMax) * ih;
+  const Y = v => M.t + ih - Yfrac(v) * ih;
 
   const xTicks = [];
   for (let i = 0; i <= 4; i++) xTicks.push(t0 + (span * i) / 4);
@@ -540,6 +576,8 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
     svg.push(`<line class="grid-line" x1="${M.l}" y1="${Y(v)}" x2="${M.l+iw}" y2="${Y(v)}"/>`);
     svg.push(`<text class="tick" x="${M.l-9}" y="${Y(v)+4}" text-anchor="end">${formatter(v)}</text>`);
   });
+  if (logScale)
+    svg.push(`<text class="tick" x="${M.l-9}" y="${M.t-4}" text-anchor="end">log</text>`);
   svg.push(`<line class="axis-line" x1="${M.l}" y1="${M.t+ih}" x2="${M.l+iw}" y2="${M.t+ih}"/>`);
   if (refLine != null && refLine <= yMax) {
     svg.push(`<line x1="${M.l}" y1="${Y(refLine)}" x2="${M.l+iw}" y2="${Y(refLine)}" `
@@ -552,10 +590,22 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
     svg.push(`<text class="tick" x="${X(t)}" y="${M.t+ih+20}" text-anchor="${anchor}">${xLabel(t)}</text>`);
   });
 
+  // Stagger labels that would collide, and drop any that cannot fit clear of
+  // the plot edge -- the dashed line still marks the boundary either way.
+  let prev = null, row = 0;
+  const LBL = 68;                                    // approx label width at 11px
   (breaks || []).filter(t => t >= t0 && t <= t1).forEach(t => {
-    svg.push(`<line x1="${X(t)}" y1="${M.t}" x2="${X(t)}" y2="${M.t+ih}" `
+    const x = X(t);
+    svg.push(`<line x1="${x}" y1="${M.t}" x2="${x}" y2="${M.t+ih}" `
            + `stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="2 3"/>`);
-    svg.push(`<text class="tick" x="${X(t)+5}" y="${M.t+11}">prompt changed</text>`);
+    const flip = x > M.l + iw - LBL - 8;             // near the right edge, label leftwards
+    const span = flip ? [x - 5 - LBL, x - 5] : [x + 5, x + 5 + LBL];
+    // Compare actual extents: a flipped label reaches back across its neighbour,
+    // so comparing x positions alone let them overprint.
+    row = (prev && span[0] < prev[1] && span[1] > prev[0]) ? row + 1 : 0;
+    prev = span;
+    svg.push(`<text class="tick" x="${flip ? x - 5 : x + 5}" y="${M.t + 11 + row * 13}" `
+           + `text-anchor="${flip ? 'end' : 'start'}">new prompt</text>`);
   });
   svg.push(`<line class="crosshair" id="ch-${mount.id}" x1="0" y1="${M.t}" x2="0" y2="${M.t+ih}" style="opacity:0"/>`);
 
@@ -607,15 +657,19 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
 // series is no longer continuous, so mark it -- otherwise the discontinuity
 // looks like a latency event rather than a change of question.
 function promptBreaks(series) {
-  const seen = series.flatMap(s => s.runs.map(r => ({ t: Date.parse(r.ts), sha: r.prompt_sha })))
-                     .filter(r => r.sha).sort((a, b) => a.t - b.t);
-  const out = [];
-  for (let i = 1; i < seen.length; i++)
-    if (seen[i].sha !== seen[i - 1].sha) out.push(seen[i].t);
-  return out;
+  // One marker per PROMPT, not per model. Every model crosses a prompt change
+  // at its own moment, so collecting transitions per run gave 9 near-identical
+  // markers per change and the labels overprinted.
+  const firstSeen = new Map();
+  series.flatMap(s => s.runs).forEach(r => {
+    if (!r.prompt_sha) return;
+    const t = Date.parse(r.ts);
+    if (!firstSeen.has(r.prompt_sha) || t < firstSeen.get(r.prompt_sha)) firstSeen.set(r.prompt_sha, t);
+  });
+  return [...firstSeen.values()].sort((a, b) => a - b).slice(1);   // skip the original
 }
 
-function facetedChart(mount, legendMount, series, pick, formatter, refLine) {
+function facetedChart(mount, legendMount, series, pick, formatter, refLine, scale) {
   if (legendMount) legendMount.innerHTML = '';
   const byVendor = {};
   series.forEach(s => (byVendor[s.vendor] ||= []).push(s));
@@ -637,7 +691,7 @@ function facetedChart(mount, legendMount, series, pick, formatter, refLine) {
 
   const breaks = promptBreaks(series);
   Object.entries(byVendor).forEach(([vendor, models], vi) => {
-    lineChart(document.getElementById(`facet-${vi}`), null, models, pick, formatter, vendor, refLine, sharedMax, 210, breaks);
+    lineChart(document.getElementById(`facet-${vi}`), null, models, pick, formatter, vendor, refLine, sharedMax, 210, breaks, scale);
   });
 }
 
@@ -733,6 +787,17 @@ function verdict(latest, prior) {
   if (j.state === 'slow') return { cls: 'v-bad',  icon: '&#9650;', text: `${j.pct}% slower than usual` };
   if (j.state === 'fast') return { cls: 'v-good', icon: '&#9660;', text: `${j.pct}% faster than usual` };
   return { cls: 'v-ok', icon: '&#9679;', text: 'within its usual range' };
+}
+
+// A verdict compares a run to that model's baseline -- which is only meaningful
+// within one prompt. Across a prompt change every model looked "73% faster than
+// usual" because it was being measured against a different question.
+function currentPromptOnly(series) {
+  const latest = series.flatMap(s => s.runs)
+    .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts))
+    .find(r => r.prompt_sha)?.prompt_sha;
+  if (!latest) return series;
+  return series.map(s => ({ ...s, runs: s.runs.filter(r => !r.prompt_sha || r.prompt_sha === latest) }));
 }
 
 function renderVerdict(series) {
@@ -895,10 +960,13 @@ function draw() {
     return;
   }
   document.getElementById('psha').textContent = DATA.prompt_sha || '—';
-  renderVerdict(series);
-  anatomyChart(document.getElementById('chart-anatomy'), series);
-  renderTiles(series);
-  renderTable(series);
+  // Charts show every prompt (with a marker at each change); anything that
+  // JUDGES a run must stay inside the current prompt.
+  const judged = currentPromptOnly(series);
+  renderVerdict(judged);
+  anatomyChart(document.getElementById('chart-anatomy'), judged);
+  renderTiles(judged);
+  renderTable(judged);
   if (SCALE === 'rel') {
     // Divide each model by its OWN median so the lines become comparable as
     // deviations. Absolute seconds are not comparable across models -- one
@@ -914,7 +982,7 @@ function draw() {
                  rel, r => r.rel_pct, v => Math.round(v) + '%', 100);
   } else {
     facetedChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
-                 series, r => r.total_ms, fmtMs);
+                 series, r => r.total_ms, fmtMs, null, 'log');
   }
 }
 
