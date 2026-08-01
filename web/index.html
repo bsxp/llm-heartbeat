@@ -207,6 +207,8 @@
   .dg-edge { fill: var(--text-muted); font-size: 10.5px; }
   .dg-h { fill: var(--text-secondary); font-size: 11px; font-weight: 600; }
   .dg-quiet { fill: var(--text-muted); opacity: .30; }
+  .dg-net { fill: var(--text-muted); opacity: .15; }
+  .dg-brace { fill: var(--text-muted); font-size: 10px; text-anchor: middle; }
   .dg-write { fill: var(--series-1); }
   .dg-seglab text { fill: var(--text-secondary); font-size: 11px; text-anchor: middle; }
   .dg-seglab .dg-onfill { fill: #fff; font-weight: 600; }
@@ -339,22 +341,25 @@
         <!-- measured span -->
         <text x="6" y="98" class="dg-h">What the clock covers</text>
         <g class="dg-seg">
-          <rect x="6"   y="112" width="126" height="26" rx="3" class="dg-quiet"/>
-          <rect x="136" y="112" width="150" height="26" rx="3" class="dg-quiet"/>
+          <rect x="6"   y="112" width="126" height="26" rx="3" class="dg-net"/>
+          <rect x="136" y="112" width="150" height="26" rx="3" class="dg-net"/>
           <rect x="290" y="112" width="270" height="26" rx="3" class="dg-quiet"/>
           <rect x="564" y="112" width="330" height="26" rx="3" class="dg-write"/>
         </g>
         <g class="dg-seglab">
           <text x="69"  y="129">network</text>
           <text x="211" y="129">provider queue</text>
+          <text x="146" y="104" class="dg-brace">&#9660; first byte back &#8212; measured</text>
           <text x="425" y="129">reasoning (silent)</text>
           <text x="729" y="129" class="dg-onfill">writing</text>
         </g>
 
         <!-- brackets -->
         <g class="dg-brk">
-          <path d="M6 152 V162 H560 V152"/>
-          <text x="283" y="178">first token &#8212; you see nothing yet</text>
+          <path d="M6 152 V162 H286 V152"/>
+          <text x="146" y="178">transport</text>
+          <path d="M292 152 V162 H560 V152"/>
+          <text x="426" y="178">thinking &#8212; silent</text>
           <path d="M6 196 V206 H894 V196"/>
           <text x="450" y="222">total time &#8212; the headline</text>
         </g>
@@ -367,13 +372,15 @@
       </svg>
       </div>
       <p class="note" style="margin:14px 0 0">
-        Everything between the two marks is counted — including network round-trip and any
-        queueing on the provider&#8217;s side. We measure from outside, so we
-        <strong>cannot separate</strong> &#8220;the model was slow&#8221; from &#8220;the network was
-        slow&#8221; from &#8220;we were queued&#8221;, and we don&#8217;t claim to. Runs execute from a
-        single AWS region, which keeps that overhead roughly constant — so the
-        <em>changes</em> are meaningful even though the absolute numbers carry a fixed tax.
-      </p>
+        The clock is split three ways. Everything up to the <strong>first byte of the
+        response</strong> is transport — network round-trip, TLS, and whatever queueing the
+        provider does before it starts replying. From there to the first visible word is the
+        model <strong>thinking silently</strong>. After that it is writing.
+        <br><br>
+        We still can't separate network transit from provider-side queueing inside that first
+        segment — both happen before the server says anything. But that segment is small and
+        roughly constant from a single region, so a change in it is visible rather than buried
+        inside one opaque number.
     </div>
 
   </section>

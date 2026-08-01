@@ -6,9 +6,14 @@ provider got slower" from "the model got chattier".
 
 Every adapter reports the same three timings:
 
-  ttft_ms   -- request sent -> first content byte back
+  ttfb_ms   -- request sent -> first event on the stream. Network round-trip,
+               TLS, and provider accept/queue. NOT thinking: this event fires
+               before the model has produced anything.
+  ttft_ms   -- request sent -> first VISIBLE word
   total_ms  -- request sent -> stream closed (the headline: what a user waits)
   tok_per_s -- output tokens / (total_ms - ttft_ms), the generation rate
+
+  ttft_ms - ttfb_ms is therefore silent reasoning time, isolated from transport.
 
 `effort` is fixed per model in models.json and logged on every row, because it
 directly changes latency: an unlogged change to it would look like a provider
@@ -29,12 +34,20 @@ MAX_TOKENS = 16_000
 class RunResult:
     status: str = "ok"          # ok | refusal | error
     text: str = ""
+    ttfb_ms: int | None = None
     ttft_ms: int | None = None
     total_ms: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
     cached_input_tokens: int = 0
     error: str | None = None
+
+    @property
+    def thinking_ms(self) -> int | None:
+        """Silent reasoning: the stream was open but nothing was readable yet."""
+        if self.ttft_ms is None or self.ttfb_ms is None:
+            return None
+        return max(0, self.ttft_ms - self.ttfb_ms)
 
     @property
     def tok_per_s(self) -> float | None:
@@ -49,7 +62,14 @@ class RunResult:
 class _Clock:
     def __init__(self) -> None:
         self.start = time.monotonic()
+        self.ttfb: int | None = None
         self.ttft: int | None = None
+
+    def mark_stream_open(self) -> None:
+        """First event of any kind -- the request has landed and the server is
+        responding. Everything before this is transport and provider accept."""
+        if self.ttfb is None:
+            self.ttfb = int((time.monotonic() - self.start) * 1000)
 
     def mark_first_token(self) -> None:
         if self.ttft is None:
@@ -82,6 +102,7 @@ def run_anthropic(cfg: dict[str, Any], text: str) -> RunResult:
         messages=[{"role": "user", "content": text}],
     ) as stream:
         for event in stream:
+            clock.mark_stream_open()
             # Mark on VISIBLE text only, never on thinking deltas. Two reasons:
             # thinking is streamed with empty text under the default
             # display="omitted", so a thinking delta times something nobody
@@ -95,6 +116,7 @@ def run_anthropic(cfg: dict[str, Any], text: str) -> RunResult:
                 clock.mark_first_token()
         message = stream.get_final_message()
 
+    out.ttfb_ms = clock.ttfb
     out.ttft_ms = clock.ttft
     out.total_ms = clock.elapsed_ms()
     out.input_tokens = message.usage.input_tokens or 0
@@ -138,12 +160,14 @@ def run_openai_compatible(cfg: dict[str, Any], text: str) -> RunResult:
         stream_options={"include_usage": True},  # usage arrives on the final chunk
     )
     for chunk in stream:
+        clock.mark_stream_open()
         if chunk.usage:
             usage = chunk.usage
         if chunk.choices and chunk.choices[0].delta.content:
             clock.mark_first_token()
             chunks.append(chunk.choices[0].delta.content)
 
+    out.ttfb_ms = clock.ttfb
     out.ttft_ms = clock.ttft
     out.total_ms = clock.elapsed_ms()
     out.text = "".join(chunks)
@@ -171,6 +195,7 @@ def run_google(cfg: dict[str, Any], text: str) -> RunResult:
         config=types.GenerateContentConfig(max_output_tokens=MAX_TOKENS),
     )
     for chunk in stream:
+        clock.mark_stream_open()
         if getattr(chunk, "usage_metadata", None):
             usage = chunk.usage_metadata
         piece = getattr(chunk, "text", None)
@@ -178,6 +203,7 @@ def run_google(cfg: dict[str, Any], text: str) -> RunResult:
             clock.mark_first_token()
             chunks.append(piece)
 
+    out.ttfb_ms = clock.ttfb
     out.ttft_ms = clock.ttft
     out.total_ms = clock.elapsed_ms()
     out.text = "".join(chunks)
