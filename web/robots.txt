@@ -1,0 +1,6 @@
+# Everything here is public by design.
+User-agent: *
+Allow: /
+
+# The dashboard reads this; it is data, not a page.
+Disallow: /results.json
