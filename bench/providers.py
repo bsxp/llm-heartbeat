@@ -69,9 +69,15 @@ def run_anthropic(cfg: dict[str, Any], text: str) -> RunResult:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], max_retries=0)
     clock = _Clock()
 
+    # Thinking MUST be set explicitly, never left to the model's default: on
+    # Opus 5 omitting it runs adaptive thinking, while on Opus 4.8/4.7/4.6
+    # omitting it runs with no thinking at all. Relying on defaults would make
+    # a newer generation look slower purely because it was the only one
+    # thinking -- a config asymmetry that reads as a model difference.
     with client.messages.stream(
         model=cfg["model_id"],
         max_tokens=MAX_TOKENS,
+        thinking={"type": cfg.get("thinking", "adaptive")},
         output_config={"effort": cfg.get("effort", "medium")},
         messages=[{"role": "user", "content": text}],
     ) as stream:

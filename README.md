@@ -59,6 +59,13 @@ dashboard header. If the prompt ever changes, the hash changes, and the numbers 
 and after are a different series. This is the main thing that keeps the chart honest, and
 it's why the prompt file carries a do-not-edit warning.
 
+**Thinking mode is pinned and logged.** Anthropic generations differ in what
+happens when you *omit* the `thinking` parameter — Opus 5 runs adaptive thinking by
+default, while Opus 4.8/4.7/4.6 run with none. Leaving it to defaults would have made
+Opus 5 look dramatically slower than its predecessors purely because it was the only one
+thinking. Every model therefore pins `thinking` explicitly, and the value is written onto
+every row.
+
 **Reasoning effort is pinned and logged.** Effort settings directly change latency, so
 each model's is fixed in [`bench/models.json`](bench/models.json) and written onto every row. An
 unlogged change there would look exactly like a provider regression.
@@ -92,6 +99,11 @@ Stated up front, because a latency number without its caveats is misleading:
 - **One region, one time zone.** Regional capacity differences are invisible to us.
 - **Small n.** One sample per model per hour. Single-point spikes are noise; read the
   trend, not the dot.
+- **Token counts are not comparable across Anthropic generations.** Opus 4.7 introduced a
+  new tokenizer, so the same output text counts ~1x-1.35x higher on Opus 4.7/4.8/5 than on
+  Opus 4.6. Total time and time-to-first-token compare cleanly; **output-token and
+  tokens/sec comparisons between Opus 4.6 and the newer models do not** — 4.6 will look
+  artificially terse and artificially fast per token.
 
 ## Repository layout
 

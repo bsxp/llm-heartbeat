@@ -7,7 +7,8 @@
     "`model_id` values marked TODO must be filled in from the provider's live model",
     "list: `python scripts/list_models.py`.",
     "Prices are USD per 1M tokens; leave null and the dashboard shows an em dash",
-    "rather than a guessed number."
+    "rather than a guessed number.",
+    "`thinking` is pinned per model because generations differ in their DEFAULT: omitting it runs adaptive on Opus 5 but no thinking at all on Opus 4.8/4.7/4.6."
   ],
   "models": [
     {
@@ -20,7 +21,8 @@
       "effort": "medium",
       "price_in": 5.0,
       "price_out": 25.0,
-      "enabled": true
+      "enabled": true,
+      "thinking": "adaptive"
     },
     {
       "key": "fable-5",
@@ -32,7 +34,8 @@
       "effort": "medium",
       "price_in": 10.0,
       "price_out": 50.0,
-      "enabled": true
+      "enabled": true,
+      "thinking": "adaptive"
     },
     {
       "key": "sonnet-5",
@@ -44,6 +47,46 @@
       "effort": "medium",
       "price_in": 3.0,
       "price_out": 15.0,
+      "enabled": true,
+      "thinking": "adaptive"
+    },
+    {
+      "key": "opus-4-8",
+      "label": "Claude Opus 4.8",
+      "vendor": "Anthropic",
+      "adapter": "anthropic",
+      "model_id": "claude-opus-4-8",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "effort": "medium",
+      "thinking": "adaptive",
+      "price_in": 5.0,
+      "price_out": 25.0,
+      "enabled": true
+    },
+    {
+      "key": "opus-4-7",
+      "label": "Claude Opus 4.7",
+      "vendor": "Anthropic",
+      "adapter": "anthropic",
+      "model_id": "claude-opus-4-7",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "effort": "medium",
+      "thinking": "adaptive",
+      "price_in": 5.0,
+      "price_out": 25.0,
+      "enabled": true
+    },
+    {
+      "key": "opus-4-6",
+      "label": "Claude Opus 4.6",
+      "vendor": "Anthropic",
+      "adapter": "anthropic",
+      "model_id": "claude-opus-4-6",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "effort": "medium",
+      "thinking": "adaptive",
+      "price_in": 5.0,
+      "price_out": 25.0,
       "enabled": true
     },
     {
