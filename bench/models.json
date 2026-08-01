@@ -99,7 +99,7 @@
       "base_url": null,
       "price_in": 5.0,
       "price_out": 30.0,
-      "enabled": false
+      "enabled": true
     },
     {
       "key": "terra",
@@ -111,7 +111,7 @@
       "base_url": null,
       "price_in": 2.0,
       "price_out": 12.0,
-      "enabled": false
+      "enabled": true
     },
     {
       "key": "luna",
