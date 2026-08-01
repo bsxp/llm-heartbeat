@@ -158,6 +158,13 @@
   .filters button.on { background: var(--surface-1); color: var(--text-primary);
                        box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
 
+  .rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+  .rules li { font-size: 0.87rem; line-height: 1.6; color: var(--text-secondary);
+              padding-left: 16px; position: relative; }
+  .rules li::before { content: ""; position: absolute; left: 0; top: 9px;
+                      width: 5px; height: 5px; border-radius: 50%; background: var(--axis); }
+  .rules strong { color: var(--text-primary); font-weight: 550; }
+  .rules code { font-size: 0.92em; color: var(--text-primary); }
   .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
   .step { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 16px 17px; }
   .step-n { font-size: 0.66rem; font-weight: 600; color: var(--text-muted); letter-spacing: .08em; }
@@ -236,10 +243,8 @@
   <header>
     <h1>Model Speed-to-Answer</h1>
     <p class="sub">
-      Every hour, each model gets the same byte-identical prompt — write a program to
-      solve a non-trivial counting problem — and we time the response. Nothing is
-      executed and nothing is graded; the number is how long you wait for an answer,
-      verbosity included.
+      The same prompt, sent to every frontier model, every hour. We measure one thing:
+      how long you wait for an answer.
     </p>
     <p class="meta" id="meta">Loading…</p>
   </header>
@@ -262,38 +267,50 @@
     <button type="button" data-hours="0">All</button>
   </div>
 
+<section>
+    <h2>Response time</h2>
+    <p class="note">How long each model took to answer, run by run. Hollow dot = the response
+      came back empty or refused, so that point is a broken run rather than a slow one.</p>
+    <div class="card">
+      <div id="legend-time" class="legend"></div>
+      <div class="chart-scroll"><div id="chart-time"></div></div>
+    </div>
+  </section>
+
+<section>
+    <h2>Latest run</h2>
+    <p class="note">Medians are over the runs in the selected range.</p>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+<section>
+    <h2>Anatomy of a run</h2>
+    <p class="note">The latest run from each model, split into time spent <strong>waiting</strong>
+      for the first word and time spent <strong>writing</strong>. Same total, very different
+      experience.</p>
+    <div class="card">
+      <div class="legend">
+        <span class="legend-item"><span class="swatch" style="background:var(--text-muted)"></span>Waiting for first word</span>
+        <span class="legend-item"><span class="swatch" style="background:linear-gradient(120deg,var(--series-1),var(--series-3),var(--series-4))"></span>Writing <span style="color:var(--text-muted)">(each model's own colour)</span></span>
+      </div>
+      <div class="chart-scroll"><div id="chart-anatomy"></div></div>
+    </div>
+  </section>
+
   <section>
     <h2>How this works</h2>
-    <p class="note">The whole method, in four steps. Everything below is public —
-      <a href="https://github.com/bsxp/llm-heartbeat">github.com/bsxp/llm-heartbeat</a>.</p>
-    <div class="steps">
-      <div class="step">
-        <div class="step-n">STEP 1</div>
-        <div class="step-h">One fixed prompt</div>
-        <div class="step-b">Every model gets the identical prompt — write a program to solve a
-          counting problem. A hash of it (<code id="psha">—</code>) is recorded on every run, so
-          if it ever changes you can see exactly where the series breaks.</div>
-      </div>
-      <div class="step">
-        <div class="step-n">STEP 2</div>
-        <div class="step-h">Same settings, every time</div>
-        <div class="step-b">Reasoning effort and thinking mode are pinned per model and written
-          onto every row. Both change latency, so leaving them to defaults would make one model
-          look slower for reasons that have nothing to do with the model.</div>
-      </div>
-      <div class="step">
-        <div class="step-n">STEP 3</div>
-        <div class="step-h">We time the stream</div>
-        <div class="step-b">One streaming request per model, on a schedule. A clock starts before
-          the request, stamps the first visible word, and stops when the response ends. Nothing is
-          executed and nothing is graded.</div>
-      </div>
-      <div class="step">
-        <div class="step-n">STEP 4</div>
-        <div class="step-h">Plotted as-is</div>
-        <div class="step-b">No averaging across runs, no normalising for length. If a model wrote
-          more and therefore took longer, that is the number — because that is the wait.</div>
-      </div>
+    <p class="note">Every model gets the <strong>same prompt</strong>, on a schedule, and we time
+      the reply. Nothing is executed and nothing is graded &mdash; this measures the wait, not the
+      answer.</p>
+    <div class="card">
+      <ul class="rules">
+        <li><strong>One fixed prompt.</strong> A hash of it (<code id="psha">&mdash;</code>) is
+          stored on every run, so a change to it is visible instead of silent.</li>
+        <li><strong>Settings are pinned.</strong> Reasoning effort and thinking mode are fixed per
+          model and recorded, because both change latency on their own.</li>
+        <li><strong>Nothing is smoothed.</strong> No averaging, no adjusting for length. A model
+          that wrote more really did take longer.</li>
+      </ul>
     </div>
     <div class="card" style="margin-top:14px">
       <div class="chart-scroll">
@@ -357,22 +374,9 @@
 
   </section>
 
-  <section>
-    <h2>Anatomy of a run</h2>
-    <p class="note">Each model's most recent run, split into the time you spend <strong>waiting</strong>
-      for the first word and the time it spends <strong>writing</strong>. This is the whole
-      measurement in one picture — and it shows why a single "speed" number would hide more
-      than it tells.</p>
-    <div class="card">
-      <div class="legend">
-        <span class="legend-item"><span class="swatch" style="background:var(--text-muted)"></span>Waiting for first word</span>
-        <span class="legend-item"><span class="swatch" style="background:linear-gradient(120deg,var(--series-1),var(--series-3),var(--series-4))"></span>Writing <span style="color:var(--text-muted)">(each model's own colour)</span></span>
-      </div>
-      <div class="chart-scroll"><div id="chart-anatomy"></div></div>
-    </div>
   </section>
 
-  <section>
+<section>
     <h2>What each number means</h2>
     <div class="card">
       <div class="glossary">
@@ -400,45 +404,27 @@
     </div>
   </section>
 
-  <section>
-    <h2>Latest run</h2>
-    <p class="note">Median is over the runs shown.</p>
-    <div class="tiles" id="tiles"></div>
-  </section>
-
-  <section>
-    <h2>Total time per run</h2>
-    <p class="note">The headline: request sent to response complete. Hollow dot = the
-      response came back empty or without code, so a spike there is a degraded response
-      rather than a slow one.</p>
-    <div class="card">
-      <div id="legend-time" class="legend"></div>
-      <div class="chart-scroll"><div id="chart-time"></div></div>
-    </div>
-  </section>
-
-  <section>
+<section>
     <h2>Output tokens per run</h2>
-    <p class="note">How much the model wrote. Same prompt every hour, so this is the
-      model's own verbosity — and it is most of what drives total time above.</p>
+    <p class="note">How much each model wrote. Same prompt every time, so this is its own
+      verbosity — and it drives most of the response time above.</p>
     <div class="card">
       <div id="legend-tokens" class="legend"></div>
       <div class="chart-scroll"><div id="chart-tokens"></div></div>
     </div>
   </section>
 
-  <section>
+<section>
     <h2>Generation rate</h2>
-    <p class="note">Output tokens per second, excluding the wait for the first token.
-      This is what separates the two reasons total time moves: flat here with a rising
-      total means the model got wordier; falling here means the provider got slower.</p>
+    <p class="note">Words per second once writing starts. If response time rises but this
+      stays flat, the model got wordier; if this falls, the provider got slower.</p>
     <div class="card">
       <div id="legend-rate" class="legend"></div>
       <div class="chart-scroll"><div id="chart-rate"></div></div>
     </div>
   </section>
 
-  <section>
+<section>
     <h2>All models</h2>
     <p class="note">The same numbers as above, as text.</p>
     <div class="card chart-scroll"><table id="table"></table></div>
@@ -505,9 +491,13 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle) {
 
   const xTicks = [];
   for (let i = 0; i <= 4; i++) xTicks.push(t0 + (span * i) / 4);
-  const dayMs = 86400000;
-  const xLabel = t => new Date(t).toLocaleString('en-US',
-    span > dayMs * 2 ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', hour: 'numeric' });
+  // Tick format has to follow the span, or a short range prints the same label
+  // on every tick (an hour of data all reading "Jul 31, 7 PM").
+  const hourMs = 3600000, dayMs = 86400000;
+  const xFmt = span > dayMs * 2  ? { month: 'short', day: 'numeric' }
+             : span > hourMs * 6 ? { month: 'short', day: 'numeric', hour: 'numeric' }
+             :                     { hour: 'numeric', minute: '2-digit' };
+  const xLabel = t => new Date(t).toLocaleString('en-US', xFmt);
 
   const svg = [`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${yTitle} per run over time">`];
   ticks.forEach(v => {
