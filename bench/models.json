@@ -91,14 +91,38 @@
     },
     {
       "key": "sol",
-      "label": "Sol",
+      "label": "GPT-5.6 Sol",
       "vendor": "OpenAI",
       "adapter": "openai",
-      "model_id": "TODO-run-scripts/list_models.py",
+      "model_id": "gpt-5.6-sol",
       "api_key_env": "OPENAI_API_KEY",
       "base_url": null,
-      "price_in": null,
-      "price_out": null,
+      "price_in": 5.0,
+      "price_out": 30.0,
+      "enabled": false
+    },
+    {
+      "key": "terra",
+      "label": "GPT-5.6 Terra",
+      "vendor": "OpenAI",
+      "adapter": "openai",
+      "model_id": "gpt-5.6-terra",
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": null,
+      "price_in": 2.0,
+      "price_out": 12.0,
+      "enabled": false
+    },
+    {
+      "key": "luna",
+      "label": "GPT-5.6 Luna",
+      "vendor": "OpenAI",
+      "adapter": "openai",
+      "model_id": "gpt-5.6-luna",
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": null,
+      "price_in": 0.2,
+      "price_out": 1.2,
       "enabled": false
     },
     {
