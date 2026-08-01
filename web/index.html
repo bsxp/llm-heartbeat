@@ -57,6 +57,10 @@
       --series-8: #e66767;
     }
   }
+  :root[data-theme="dark"] .viz-root { --warn-ink: #f59e0b; }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root { --warn-ink: #f59e0b; }
+  }
   :root[data-theme="dark"] .viz-root {
     color-scheme: dark;
     --page:           #09090b;
@@ -143,6 +147,20 @@
   .tile-vendor { font-size: 0.72rem; color: var(--text-muted); margin-left: auto; }
   .tile-value { font-size: 1.65rem; font-weight: 600; letter-spacing: -0.024em; line-height: 1.1; }
   .tile-unit { font-size: 0.8rem; font-weight: 400; color: var(--text-muted); margin-left: 4px; }
+  .verdict { display: flex; align-items: center; gap: 6px; margin-top: 9px;
+             font-size: 0.78rem; font-weight: 500; }
+  .verdict span { font-size: 0.62rem; line-height: 1; }
+  .v-ok   { color: var(--text-secondary); }
+  .v-wait { color: var(--text-muted); }
+  .v-good { color: var(--good); }
+  .v-warn { color: var(--warn-ink, #b45309); }
+  .v-bad  { color: var(--critical); }
+  .tile-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+               margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+               font-size: 0.74rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .spark { flex: none; opacity: .85; }
+  .tile-note { margin-top: 8px; font-size: 0.72rem; color: var(--critical); }
+  .tile.down .tile-value { color: var(--text-muted); }
   .tile-rows { margin-top: 14px; display: grid; gap: 5px; }
   .tile-row { display: flex; justify-content: space-between; font-size: 0.76rem;
               color: var(--text-secondary); }
@@ -278,8 +296,9 @@
   </section>
 
 <section>
-    <h2>Latest run</h2>
-    <p class="note">Medians are over the runs in the selected range.</p>
+    <h2>Model health</h2>
+    <p class="note">Each model's latest response time, judged against its own recent history —
+      not against the other models. "Typical" is the median of that model's earlier runs in range.</p>
     <div class="tiles" id="tiles"></div>
   </section>
 
@@ -585,31 +604,68 @@ function anatomyChart(mount, series) {
   mount.innerHTML = out.join('');
 }
 
+// A card answers one question: is this model behaving normally FOR ITSELF right
+// now? Absolute seconds cannot answer that -- 47s is fine for one model and a
+// red flag for another -- so every card compares the latest run to that model's
+// own baseline.
+const MIN_BASELINE = 5;   // below this, a "vs typical" delta is just noise
+
+function sparkline(runs, color) {
+  const pts = runs.slice(-14).map(r => r.total_ms);
+  if (pts.length < 2) return '';
+  const W = 68, H = 18, lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
+  const d = pts.map((v, i) =>
+    `${i ? 'L' : 'M'}${(i / (pts.length - 1) * W).toFixed(1)},${(H - ((v - lo) / span) * (H - 3) - 1.5).toFixed(1)}`
+  ).join(' ');
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">`
+       + `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" `
+       + `stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function verdict(latest, baseline, n) {
+  if (n < MIN_BASELINE)
+    return { cls: 'v-wait', icon: '&#9679;', text: `building baseline &middot; ${n} run${n === 1 ? '' : 's'}` };
+  const d = (latest - baseline) / baseline;
+  const pct = Math.abs(Math.round(d * 100));
+  if (d > 0.5)  return { cls: 'v-bad',  icon: '&#9650;', text: `${pct}% slower than usual` };
+  if (d > 0.2)  return { cls: 'v-warn', icon: '&#9650;', text: `${pct}% slower than usual` };
+  if (d < -0.2) return { cls: 'v-good', icon: '&#9660;', text: `${pct}% faster than usual` };
+  return { cls: 'v-ok', icon: '&#9679;', text: 'normal for this model' };
+}
+
 function renderTiles(series) {
   document.getElementById('tiles').innerHTML = series.map((s, i) => {
-    const runs = s.runs;
-    const ok = runs.filter(r => r.status === 'ok');
-    // Headline the last SUCCESSFUL run. A refusal returns in ~2s with no work
-    // done, and showing it as the model's time would rank it fastest.
-    const last = ok[ok.length - 1];
-    const lastAny = runs[runs.length - 1];
-    const degraded = lastAny && lastAny.status !== 'ok' ? lastAny.status : null;
-    const bad = runs.length - runs.filter(r => r.health === 'ok').length;
+    const ok = s.runs.filter(r => r.status === 'ok' && r.total_ms != null);
+    const lastAny = s.runs[s.runs.length - 1];
+    const down = lastAny && lastAny.status !== 'ok' ? lastAny.status : null;
+    const color = colorOf(i);
+
+    if (!ok.length) {
+      return `<div class="tile down">
+        <div class="tile-head"><span class="swatch" style="background:${color}"></span>
+          <span class="tile-name">${s.label}</span><span class="tile-vendor">${s.vendor}</span></div>
+        <div class="tile-value">&mdash;</div>
+        <div class="verdict v-bad"><span>&#9650;</span> not responding &middot; ${down || 'no data'}</div>
+        <div class="tile-foot">${s.runs.length} run${s.runs.length === 1 ? '' : 's'}, none completed</div>
+      </div>`;
+    }
+
+    const latest = ok[ok.length - 1];
+    // Baseline excludes the run being judged, or a model is compared to itself.
+    const prior = ok.slice(0, -1).map(r => r.total_ms);
+    const base = prior.length ? median(prior) : null;
+    const v = base == null ? verdict(0, 1, ok.length) : verdict(latest.total_ms, base, prior.length);
+
     return `<div class="tile">
-      <div class="tile-head">
-        <span class="swatch" style="background:${colorOf(i)}"></span>
-        <span class="tile-name">${s.label}</span>
-        <span class="tile-vendor">${s.vendor}</span>
+      <div class="tile-head"><span class="swatch" style="background:${color}"></span>
+        <span class="tile-name">${s.label}</span><span class="tile-vendor">${s.vendor}</span></div>
+      <div class="tile-value">${fmtMs(latest.total_ms)}</div>
+      <div class="verdict ${v.cls}"><span>${v.icon}</span> ${v.text}</div>
+      <div class="tile-foot">
+        <span>${base != null ? `typical ${fmtMs(base)}` : `${ok.length} completed`}</span>
+        ${sparkline(ok, color)}
       </div>
-      <div><span class="tile-value">${fmtMs(last && last.total_ms)}</span><span class="tile-unit">${
-        degraded ? `last ok run &middot; <span class="fail">now ${degraded}</span>` : 'last run'}</span></div>
-      <div class="tile-rows">
-        <div class="tile-row"><span>Median total</span><span>${fmtMs(median(ok.map(r => r.total_ms)))}</span></div>
-        <div class="tile-row"><span>Median first token</span><span>${fmtMs(median(ok.map(r => r.ttft_ms).filter(v => v != null)))}</span></div>
-        <div class="tile-row"><span>Median rate</span><span>${fmtRate(median(ok.map(r => r.tok_per_s).filter(v => v != null)))}</span></div>
-        <div class="tile-row"><span>Median output</span><span>${fmtNum(median(ok.map(r => r.output_tokens)))} tok</span></div>
-        <div class="tile-row"><span>Runs</span><span>${runs.length}${bad ? ` · ${bad} degraded` : ''}</span></div>
-      </div>
+      ${down ? `<div class="tile-note">latest attempt: ${down}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -664,8 +720,9 @@ function draw() {
 
   const total = series.reduce((n, s) => n + s.runs.length, 0);
   document.getElementById('meta').textContent =
-    `${series.length} models · ${total} runs in range · prompt ${DATA.prompt_sha || '?'} · ` +
-    `updated ${new Date(DATA.generated_at).toLocaleString('en-US')}`;
+    `${series.length} models · ${total} runs · updated ` +
+    new Date(DATA.generated_at).toLocaleString('en-US',
+      { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
   if (!series.length) {
     document.getElementById('tiles').innerHTML = '<p class="empty">No runs in this range.</p>';
