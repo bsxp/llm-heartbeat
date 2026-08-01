@@ -115,6 +115,22 @@
   .filters button:hover { color: var(--text-primary); }
   .filters button.on { color: var(--text-primary); font-weight: 600; border-color: var(--axis); }
 
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .step { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 15px; }
+  .step-n { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); letter-spacing: .06em; }
+  .step-h { font-size: 0.85rem; font-weight: 620; margin: 5px 0 5px; }
+  .step-b { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5; }
+  .step-b code { font-size: 0.95em; color: var(--text-primary); }
+
+  .glossary { display: grid; gap: 0; margin-top: 4px; }
+  .gl { display: grid; grid-template-columns: 170px 1fr; gap: 14px;
+        padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 0.81rem; }
+  .gl:last-child { border-bottom: 0; }
+  .gl-t { font-weight: 620; }
+  .gl-d { color: var(--text-secondary); line-height: 1.55; }
+  .gl-d em { color: var(--text-primary); font-style: normal; font-weight: 600; }
+  @media (max-width: 620px) { .gl { grid-template-columns: 1fr; gap: 3px; } }
+
   .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-secondary); }
 
@@ -168,6 +184,84 @@
     <button type="button" data-hours="168">7 days</button>
     <button type="button" data-hours="0">All</button>
   </div>
+
+  <section>
+    <h2>How this works</h2>
+    <p class="note">The whole method, in four steps. Everything below is public —
+      <a href="https://github.com/bsxp/llm-heartbeat">github.com/bsxp/llm-heartbeat</a>.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">STEP 1</div>
+        <div class="step-h">One fixed prompt</div>
+        <div class="step-b">Every model gets the identical prompt — write a program to solve a
+          counting problem. A hash of it (<code id="psha">—</code>) is recorded on every run, so
+          if it ever changes you can see exactly where the series breaks.</div>
+      </div>
+      <div class="step">
+        <div class="step-n">STEP 2</div>
+        <div class="step-h">Same settings, every time</div>
+        <div class="step-b">Reasoning effort and thinking mode are pinned per model and written
+          onto every row. Both change latency, so leaving them to defaults would make one model
+          look slower for reasons that have nothing to do with the model.</div>
+      </div>
+      <div class="step">
+        <div class="step-n">STEP 3</div>
+        <div class="step-h">We time the stream</div>
+        <div class="step-b">One streaming request per model, on a schedule. A clock starts before
+          the request, stamps the first visible word, and stops when the response ends. Nothing is
+          executed and nothing is graded.</div>
+      </div>
+      <div class="step">
+        <div class="step-n">STEP 4</div>
+        <div class="step-h">Plotted as-is</div>
+        <div class="step-b">No averaging across runs, no normalising for length. If a model wrote
+          more and therefore took longer, that is the number — because that is the wait.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Anatomy of a run</h2>
+    <p class="note">Each model's most recent run, split into the time you spend <strong>waiting</strong>
+      for the first word and the time it spends <strong>writing</strong>. This is the whole
+      measurement in one picture — and it shows why a single "speed" number would hide more
+      than it tells.</p>
+    <div class="card">
+      <div class="legend">
+        <span class="legend-item"><span class="swatch" style="background:var(--text-muted)"></span>Waiting for first word</span>
+        <span class="legend-item"><span class="swatch" style="background:linear-gradient(120deg,var(--series-1),var(--series-3),var(--series-4))"></span>Writing <span style="color:var(--text-muted)">(each model's own colour)</span></span>
+      </div>
+      <div class="chart-scroll"><div id="chart-anatomy"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What each number means</h2>
+    <div class="card">
+      <div class="glossary">
+        <div class="gl"><div class="gl-t">Total time</div><div class="gl-d">
+          Request sent to response finished — <em>the headline</em>. Includes however much the model
+          chose to write. Given an identical prompt, a wordier model genuinely does make you wait longer,
+          and we don't correct for that.</div></div>
+        <div class="gl"><div class="gl-t">First token</div><div class="gl-d">
+          How long until the first visible word. <em>This includes reasoning time</em> — models that
+          think before answering are silent for this entire stretch. It is not a network-latency figure.</div></div>
+        <div class="gl"><div class="gl-t">Delivery rate</div><div class="gl-d">
+          Output tokens ÷ the writing phase. <em>Not a generation speed.</em> Some providers reason
+          silently and then flush the whole answer at once, which shows up here as an implausibly high
+          rate — it is measuring how fast a finished buffer arrives, not how fast the model writes.
+          Compare it within a model over time, not between vendors.</div></div>
+        <div class="gl"><div class="gl-t">Output tokens</div><div class="gl-d">
+          How much the model wrote. Same prompt every time, so this is its own verbosity — and it is
+          most of what drives total time. <em>Not comparable across Anthropic generations</em>: Opus 4.7
+          changed tokenizers, so the same text counts higher on 4.7+ than on 4.6.</div></div>
+        <div class="gl"><div class="gl-t">Health</div><div class="gl-d">
+          A sanity flag — did a plausible answer come back at all. <em>Not a grade.</em> Nothing runs
+          the code. It exists so a spike can be told apart from a refusal or an empty response, which
+          are excluded from the charts rather than plotted as fast runs.</div></div>
+      </div>
+    </div>
+  </section>
 
   <section>
     <h2>Latest run</h2>
@@ -331,6 +425,39 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle) {
   node.addEventListener('mouseleave', () => { tooltip.style.opacity = 0; cross.style.opacity = 0; });
 }
 
+function anatomyChart(mount, series) {
+  const rows = series
+    .map((s, i) => ({ s, i, run: [...s.runs].reverse().find(r => r.status === 'ok') }))
+    .filter(r => r.run && r.run.total_ms != null);
+  if (!rows.length) { mount.innerHTML = '<p class="empty">No completed runs yet.</p>'; return; }
+  rows.sort((a, b) => b.run.total_ms - a.run.total_ms);
+
+  const W = Math.max(720, mount.clientWidth || 720);
+  const L = 132, R = 96, BAR = 26, GAP = 12, TOP = 8;
+  const iw = W - L - R;
+  const H = TOP + rows.length * (BAR + GAP) + 26;
+  const max = Math.max(...rows.map(r => r.run.total_ms));
+  const X = ms => (ms / max) * iw;
+
+  const out = [`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Waiting versus writing time per model">`];
+  rows.forEach((r, n) => {
+    const y = TOP + n * (BAR + GAP);
+    const wait = r.run.ttft_ms || 0;
+    const write = Math.max(0, r.run.total_ms - wait);
+    const wWait = X(wait), wWrite = X(write);
+    const pct = Math.round((wait / r.run.total_ms) * 100);
+    out.push(`<text class="tick" x="${L - 10}" y="${y + BAR / 2 + 4}" text-anchor="end">${r.s.label}</text>`);
+    // 2px surface gap between the two segments so they never read as one mark
+    out.push(`<rect x="${L}" y="${y}" width="${Math.max(0, wWait - 2)}" height="${BAR}" rx="3" fill="var(--text-muted)" opacity="0.45"/>`);
+    out.push(`<rect x="${L + wWait}" y="${y}" width="${Math.max(2, wWrite)}" height="${BAR}" rx="3" fill="${colorOf(r.i)}"/>`);
+    out.push(`<text class="tick" x="${L + wWait + wWrite + 9}" y="${y + BAR / 2 + 4}">${fmtMs(r.run.total_ms)}</text>`);
+    if (wWait > 46) out.push(
+      `<text class="tick" x="${L + wWait / 2}" y="${y + BAR / 2 + 4}" text-anchor="middle" fill="var(--text-primary)">${pct}% waiting</text>`);
+  });
+  out.push('</svg>');
+  mount.innerHTML = out.join('');
+}
+
 function renderTiles(series) {
   document.getElementById('tiles').innerHTML = series.map((s, i) => {
     const runs = s.runs;
@@ -407,8 +534,11 @@ function draw() {
     document.getElementById('chart-time').innerHTML = '<p class="empty">No runs in this range.</p>';
     document.getElementById('chart-tokens').innerHTML = '<p class="empty">No runs in this range.</p>';
     document.getElementById('chart-rate').innerHTML = '<p class="empty">No runs in this range.</p>';
+    document.getElementById('chart-anatomy').innerHTML = '<p class="empty">No runs in this range.</p>';
     return;
   }
+  document.getElementById('psha').textContent = DATA.prompt_sha || '—';
+  anatomyChart(document.getElementById('chart-anatomy'), series);
   renderTiles(series);
   renderTable(series);
   lineChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
