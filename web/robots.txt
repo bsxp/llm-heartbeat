@@ -2,5 +2,7 @@
 User-agent: *
 Allow: /
 
-# The dashboard reads this; it is data, not a page.
-Disallow: /results.json
+# results.json must stay crawlable. Every model name and number on the page is
+# injected from it at runtime, and search engines honour robots.txt for
+# subresource fetches during rendering -- disallowing it means the indexed copy
+# of the page is the empty shell, with "Loading..." where the data should be.

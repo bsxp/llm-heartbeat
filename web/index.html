@@ -25,6 +25,54 @@
 <meta name="twitter:title" content="Is my LLM slow?">
 <meta name="twitter:description" content="The same prompt, sent to every frontier model, every hour. See which models are answering slower than usual right now.">
 
+<!-- Structured data. Dataset is the honest description of what this page is, and
+     is the one type here that Google surfaces (Dataset Search). FAQPage is
+     deliberately absent: its rich results have been limited to government and
+     health sites since 2023, so the markup would be dead weight. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://ismyllmslow.com/#website",
+      "url": "https://ismyllmslow.com/",
+      "name": "Is my LLM slow?",
+      "description": "The same prompt, sent to every frontier model, every hour. See which models are answering slower than usual right now.",
+      "inLanguage": "en-US",
+      "license": "https://opensource.org/licenses/MIT"
+    },
+    {
+      "@type": "Dataset",
+      "@id": "https://ismyllmslow.com/#dataset",
+      "name": "Hourly frontier LLM response-time measurements",
+      "description": "Response times for frontier large language models, measured hourly by sending one fixed prompt to every model and timing the reply. Each run records total time, time to first token, output tokens, and whether the response came back empty or refused. Nothing is smoothed, averaged, or adjusted for response length.",
+      "url": "https://ismyllmslow.com/",
+      "isAccessibleForFree": true,
+      "license": "https://opensource.org/licenses/MIT",
+      "creator": { "@type": "Organization", "name": "Is my LLM slow?", "url": "https://ismyllmslow.com/" },
+      "isPartOf": { "@id": "https://ismyllmslow.com/#website" },
+      "measurementTechnique": "One fixed prompt is sent to each model on an hourly schedule at pinned reasoning effort and thinking mode. The clock starts when the request is sent and stops when the response stream ends.",
+      "variableMeasured": [
+        { "@type": "PropertyValue", "name": "Total time", "description": "Milliseconds from request sent to response finished.", "unitText": "ms" },
+        { "@type": "PropertyValue", "name": "Time to first token", "description": "Milliseconds until the first visible word, including silent reasoning time.", "unitText": "ms" },
+        { "@type": "PropertyValue", "name": "Output tokens", "description": "Tokens generated in the response." },
+        { "@type": "PropertyValue", "name": "Health", "description": "Whether the response came back complete, empty, or refused." }
+      ],
+      "keywords": [
+        "LLM latency", "response time", "Claude Opus 5", "Claude Fable 5", "Claude Sonnet 5",
+        "GPT-5.6 Sol", "GPT-5.6 Terra", "Grok 4.5", "model performance monitoring"
+      ],
+      "distribution": {
+        "@type": "DataDownload",
+        "encodingFormat": "application/json",
+        "contentUrl": "https://ismyllmslow.com/results.json"
+      }
+    }
+  ]
+}
+</script>
+
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M5 21 L11 13 L16 18 L21 8 L27 20' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <script>
   // Stamp the saved theme before first paint, or a dark-mode visitor gets a
@@ -62,6 +110,14 @@
     --series-6: #008300;
     --series-7: #4a3aa7;
     --series-8: #e34948;
+    /* 9-12 exist because the model list outgrew eight. With one colour per model
+       page-wide, a 9th model wrapped back to slot 1 and drew Grok in exactly the
+       same blue as Claude Opus 5 -- survivable in separate panels, not on a
+       shared overlay. */
+    --series-9:  #0e9dbb;
+    --series-10: #8a5a2b;
+    --series-11: #b5379f;
+    --series-12: #5b6b7c;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
@@ -85,6 +141,10 @@
       --series-6: #008300;
       --series-7: #9085e9;
       --series-8: #e66767;
+      --series-9:  #22a7c4;
+      --series-10: #a97445;
+      --series-11: #c757b1;
+      --series-12: #7d8d9e;
     }
   }
   :root[data-theme="dark"] { --warn-ink: #f59e0b; }
@@ -112,6 +172,10 @@
     --series-6: #008300;
     --series-7: #9085e9;
     --series-8: #e66767;
+    --series-9:  #22a7c4;
+    --series-10: #a97445;
+    --series-11: #c757b1;
+    --series-12: #7d8d9e;
   }
 
   * { box-sizing: border-box; }
@@ -128,17 +192,87 @@
       text-decoration-color: var(--axis); }
   a:hover { text-decoration-color: var(--text-primary); }
 
-  .viz-root { background: var(--page); color: var(--text-primary);
-               min-height: 100vh; padding: 40px 24px 96px; }
+  /* Rail geometry. The right padding reserves exactly the rail's column, which
+     shifts the centred .wrap left by half that reservation -- so the content
+     column's right edge lands at a position we can compute, and pin the rail to.
+     Keeping these as variables means the pin math below cannot drift out of sync
+     with the widths it depends on. */
+  .viz-root {
+    --wrap-w: 1060px;
+    --rail-w: 200px;
+    --rail-gap: 28px;
+    --pad-l: 24px;
+    --pad-r: calc(var(--pad-l) + var(--rail-w) + var(--rail-gap));   /* 252px */
+    background: var(--page); color: var(--text-primary);
+    min-height: 100vh; padding: 40px var(--pad-r) 96px var(--pad-l);
+  }
   .wrap { max-width: 1060px; margin: 0 auto; }
 
-  .topbar { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 40px; }
+  .layout { display: block; }
+  .col-main { min-width: 0; }   /* or the charts' intrinsic width blows out the grid */
+
+  /* The rail is furniture, not content: fixed to the viewport, entirely out of
+     the document flow, so the body scrolls beneath a panel that never moves.
+     .viz-root reserves an equal-width padding gutter on the right rather than
+     letting the panel float over the page -- an overlay would sit on top of the
+     charts on any viewport narrow enough for them to reach it. Nothing in the
+     ancestor chain sets transform/filter/perspective, which would otherwise
+     re-root position:fixed to that ancestor instead of the viewport. */
+  .rail-head { font-size: 0.68rem; font-weight: 600; letter-spacing: .07em;
+               text-transform: uppercase; color: var(--text-muted);
+               padding-bottom: 9px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+  /* Pinned to the content column, not the window. Anchoring to `right` glued the
+     panel to the viewport edge, so the gap between it and the content grew on
+     every wider screen and it drifted away from the thing it annotates.
+     The content box centre sits at 50% + (pad-l - pad-r)/2 -- offset from the
+     viewport centre by half the reservation. The column's right edge is half a
+     wrap-width past that, and the rail starts one gutter beyond it. */
+  @media (min-width: 1336px) {
+    .rail {
+      position: fixed; top: 24px; z-index: 5;
+      left: calc(50% + (var(--pad-l) - var(--pad-r)) / 2 + var(--wrap-w) / 2 + var(--rail-gap));
+      width: var(--rail-w);
+      max-height: calc(100vh - 48px); overflow-y: auto;
+      background: var(--surface-1); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 15px;
+    }
+  }
+  .mc { display: flex; align-items: center; gap: 8px; padding: 8px 2px;
+        border-bottom: 1px solid var(--border); }
+  .mc:last-child { border-bottom: 0; }
+  .mc-name { font-size: 0.76rem; line-height: 1.25; min-width: 0;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mc-state { margin-left: auto; font-size: 0.68rem; flex: none; color: var(--text-muted); }
+  /* Status is carried by a word as well as a colour -- a red/green dot alone is
+     unreadable for the ~8% of men with a colour vision deficiency. */
+  .mc-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-muted); }
+  .mc.is-ok   .mc-dot { background: var(--good); }
+  .mc.is-slow .mc-dot { background: var(--warn-ink, #b45309); }
+  .mc.is-slow .mc-state { color: var(--warn-ink, #b45309); }
+  .mc.is-bad  .mc-dot { background: var(--critical); }
+  .mc.is-bad  .mc-state { color: var(--critical); }
+
+  /* Too narrow to pin without crowding the charts, so the rail rejoins the flow
+     as a horizontal strip above the evidence rather than disappearing. */
+  @media (max-width: 1335px) {
+    /* Give the reserved gutter back -- nothing is pinned into it down here. */
+    .viz-root { padding-right: var(--pad-l); }
+    .rail { display: block; margin: 0 0 8px; }
+    .rail-head { display: none; }
+    #rail { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+    .mc { border-bottom: 0; padding: 4px 0; }
+    .mc-state { margin-left: 2px; }
+  }
+
+  /* The h1 is now the question, deliberately subordinate to the answer under
+     it -- so it reads as a label rather than competing with the verdict. */
+  .topbar { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
   header { flex: 1; }
-  h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.021em; margin: 0 0 8px;
-       line-height: 1.25; }
-  .sub { color: var(--text-secondary); font-size: 0.94rem; line-height: 1.65;
-         max-width: 66ch; margin: 0; }
-  .meta { color: var(--text-muted); font-size: 0.78rem; margin-top: 14px;
+  h1 { font-size: 0.95rem; font-weight: 600; letter-spacing: 0; margin: 0 0 6px;
+       line-height: 1.35; color: var(--text-secondary); }
+  .sub { color: var(--text-muted); font-size: 0.85rem; line-height: 1.6;
+         max-width: 62ch; margin: 0; }
+  .meta { color: var(--text-muted); font-size: 0.78rem; margin: 0;
           font-variant-numeric: tabular-nums; }
 
   section { margin-top: 44px; }
@@ -197,14 +331,40 @@
               color: var(--text-secondary); }
   .tile-row span:last-child { font-variant-numeric: tabular-nums; color: var(--text-primary); }
 
-  .hero { margin: 0 0 36px; }
-  .hero-line { font-size: 1.55rem; font-weight: 600; letter-spacing: -0.02em;
-               line-height: 1.3; margin: 0; max-width: 24ch; }
+  /* The answer to the question in the h1. It outweighs everything else on the
+     page on purpose -- clamped so it stays dominant on a phone without
+     overflowing, and capped at 20ch so it breaks into two or three short lines
+     rather than one thin ribbon across a wide viewport. */
+  .hero { margin: 0 0 14px; }
+  .hero-line { font-size: clamp(2rem, 5.2vw, 3.1rem); font-weight: 640;
+               letter-spacing: -0.032em; line-height: 1.12; margin: 0; max-width: 20ch; }
   .hero-line .slow { color: var(--critical); }
-  .hero-sub { margin: 12px 0 0; font-size: 0.9rem; color: var(--text-secondary);
-              line-height: 1.6; max-width: 62ch; }
+  .hero-sub { margin: 16px 0 0; font-size: 0.95rem; color: var(--text-secondary);
+              line-height: 1.62; max-width: 62ch; }
   .hero-sub b { color: var(--text-primary); font-weight: 550; }
-  .hero-meta { margin: 10px 0 0; font-size: 0.78rem; color: var(--text-muted); }
+
+  /* Zone rules. The page has two halves -- live evidence, then methodology --
+     and without a marker they read as one undifferentiated run of sections. */
+  .zone { display: flex; align-items: center; gap: 16px; margin-top: 52px;
+          padding-top: 18px; border-top: 1px solid var(--border); }
+  .zone-label { font-size: 0.72rem; font-weight: 600; letter-spacing: .07em;
+                text-transform: uppercase; color: var(--text-muted); flex: none; }
+  .zone-tools { display: flex; align-items: center; gap: 9px; margin-left: auto; }
+  .zone-hint { font-size: 0.75rem; color: var(--text-muted); }
+  .zone-note { margin: 10px 0 0; font-size: 0.78rem; color: var(--text-muted);
+               max-width: 74ch; line-height: 1.55; }
+  .zone-method { margin-top: 64px; }
+  .zone + section, .zone-note + section { margin-top: 30px; }
+  @media (max-width: 560px) {
+    .zone { flex-wrap: wrap; gap: 10px; }
+    .zone-tools { margin-left: 0; width: 100%; }
+  }
+
+  /* Marks a value we can measure but not attribute. */
+  .q { display: inline-block; margin-left: 3px; width: 12px; height: 12px; line-height: 12px;
+       text-align: center; border-radius: 50%; font-size: 0.62rem; cursor: help;
+       background: var(--surface-2); color: var(--text-muted); vertical-align: 1px; }
+  .tbl-swatch { display: inline-block; margin-right: 7px; vertical-align: 1px; }
 
   .filters { display: inline-flex; gap: 2px; padding: 2px; margin: 0;
              background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
@@ -257,6 +417,24 @@
   .dg-mark path { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
   .dg-mark text { fill: var(--text-muted); font-size: 10.5px; }
 
+  /* Small-multiple grid. minmax keeps panels above the width where a 24-hour
+     trace stops being readable; below that they stack one per row rather than
+     shrinking further. */
+  .sm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(284px, 1fr)); gap: 10px; }
+  .sm { border: 1px solid var(--border); border-radius: 10px; padding: 14px 15px 12px;
+        background: var(--surface-1); }
+  .sm:hover { border-color: var(--axis); }
+  .sm-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .sm-name { font-size: 0.84rem; font-weight: 550; }
+  .sm-vendor { margin-left: auto; font-size: 0.72rem; color: var(--text-muted); }
+  .sm-value { font-size: 1.6rem; font-weight: 600; letter-spacing: -0.024em; line-height: 1.1; }
+  .sm .verdict { margin: 8px 0 10px; }
+  .sm-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+             margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border);
+             font-size: 0.74rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .sm-tick { font-size: 9.5px; }
+  .sm-range { margin: 0 0 12px; font-size: 0.76rem; color: var(--text-muted); }
+
   .chart-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
   .facet + .facet { margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--border); }
   .facet-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 6px; }
@@ -265,12 +443,28 @@
   .facet-legend { display: flex; flex-wrap: wrap; gap: 14px; }
   .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-secondary); }
+  .legend-item.hl { cursor: pointer; }
+  .legend-item.hl:hover { color: var(--text-primary); }
+  .ser { transition: opacity .12s; }
 
   .chart-scroll { overflow-x: auto; }
   svg { display: block; max-width: 100%; }
   .grid-line { stroke: var(--grid); stroke-width: 1; }
   .axis-line { stroke: var(--axis); stroke-width: 1; }
   .tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  /* Sits on top of a striped or saturated bar, where 11px muted grey disappears.
+     paint-order draws the halo BEHIND the glyphs, so the stroke knocks the bar
+     back instead of eating into the letterforms. */
+  .seg-label {
+    fill: var(--text-primary);
+    font-size: 11px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    paint-order: stroke fill;
+    stroke: var(--surface-1);
+    stroke-width: 3.5px;
+    stroke-linejoin: round;
+  }
   .axis-title { fill: var(--text-secondary); font-size: 11px; }
   .crosshair { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; }
 
@@ -312,7 +506,6 @@
       The same prompt, sent to every frontier model, every hour. This tracks how long
       each one takes to answer.
     </p>
-    <p class="meta" id="meta">Loading…</p>
   </header>
   <div class="theme" role="group" aria-label="Colour theme">
     <button type="button" data-theme-set="light" title="Light" aria-pressed="false">
@@ -327,34 +520,69 @@
   </div>
   </div>
 
+  <!-- The page asks a question in its title; this is the answer, and it is the
+       reason anyone is here. It gets the largest type on the page -- previously
+       it rendered SMALLER than the h1 and sat below a metadata line, which read
+       as the third item in a list of equals rather than as the conclusion. -->
   <section class="hero" id="hero" aria-live="polite">
     <p class="hero-line">Checking&hellip;</p>
   </section>
+  <p class="meta" id="meta">Loading…</p>
 
-  <div class="filters" role="group" aria-label="Time range">
-    <button type="button" data-hours="24" class="on">24 hours</button>
-    <button type="button" data-hours="168">7 days</button>
-    <button type="button" data-hours="0">All</button>
+  <div class="layout">
+  <aside class="rail" aria-label="Model status">
+    <div class="rail-inner">
+      <div class="rail-head">Status</div>
+      <div id="rail"></div>
+    </div>
+  </aside>
+
+  <div class="col-main">
+
+  <!-- Everything below is the evidence for the verdict above. The zone rule
+       makes that split visible instead of leaving seven identically-weighted
+       sections in a row. -->
+  <div class="zone">
+    <span class="zone-label">The evidence</span>
+    <div class="zone-tools">
+      <span class="zone-hint">Range</span>
+      <div class="filters" role="group" aria-label="Time range">
+        <button type="button" data-hours="24" class="on">24 hours</button>
+        <button type="button" data-hours="168">7 days</button>
+        <button type="button" data-hours="0">All</button>
+      </div>
+    </div>
   </div>
+  <p class="zone-note">Range scopes the cards and table below. The verdict above
+    always reflects each model&rsquo;s most recent run, whatever range is selected.</p>
 
 <section>
-    <h2>Response time</h2>
-    <p class="note">How long each model took to answer, run by run. The y axis defaults to
-      <strong>log</strong> — responses range from seconds to minutes, and a linear axis lets one
-      spike flatten everything else — but you can switch it to <strong>linear</strong> to read
-      the gaps at face value. Switch to
-      <strong>vs. its own normal</strong> to see each model as a percentage of its own median,
-      which is how the verdict above is decided. A hollow dot means the response came back empty
+    <h2>Model by model</h2>
+    <p class="note">One card per model: its latest response time, how that compares with its own
+      recent runs, and every run in the selected range. <strong>Typical</strong> is the median of
+      that model&rsquo;s earlier runs in the range. Every card shares the same axes, and the faint
+      grey lines behind each trace are the other models, for scale.
+      <br><br>
+      The y axis is <strong>linear</strong> by default, so the gaps read at face value. Switch it to
+      <strong>log</strong> when one spike flattens everything else — responses range from seconds to
+      minutes, and a linear axis gives the tallest run all the room. Switch to
+      <strong>vs. its own normal</strong> to plot each model as a percentage of its own median,
+      which is how the verdict is decided. A hollow dot means the response came back empty
       or was refused.</p>
     <div class="card">
       <div class="chart-controls">
+        <div class="filters view-mode" role="group" aria-label="Chart layout">
+          <button type="button" data-view="cards" class="on">One card each</button>
+          <button type="button" data-view="vendor">By provider</button>
+          <button type="button" data-view="overlay">All on one chart</button>
+        </div>
         <div class="filters chart-mode" role="group" aria-label="Chart measure">
           <button type="button" data-mode="abs" class="on">Seconds</button>
           <button type="button" data-mode="rel">vs. its own normal</button>
         </div>
         <div class="filters axis-mode" role="group" aria-label="Y axis scale">
-          <button type="button" data-axis="log" class="on">Log</button>
-          <button type="button" data-axis="lin">Linear</button>
+          <button type="button" data-axis="lin" class="on">Linear</button>
+          <button type="button" data-axis="log">Log</button>
         </div>
       </div>
       <div id="legend-time" class="legend"></div>
@@ -362,41 +590,19 @@
     </div>
   </section>
 
-<section>
-    <h2>Model health</h2>
-    <p class="note">Each model's latest response time, compared with its own recent runs.
-      Typical is the median of that model's earlier runs in the selected range.</p>
-    <div class="tiles" id="tiles"></div>
-  </section>
+
 
 <section>
     <h2>Anatomy of a run</h2>
-    <p class="note">The latest run from each model, split into time spent <strong>waiting</strong>
-      for the first word and time spent <strong>writing</strong>.</p>
-    <div class="card">
-      <div class="legend">
-        <span class="legend-item"><span class="swatch" style="background:var(--text-muted)"></span>Waiting for first word</span>
-        <span class="legend-item"><span class="swatch" style="background:linear-gradient(120deg,var(--series-1),var(--series-3),var(--series-4))"></span>Writing <span style="color:var(--text-muted)">(model colour)</span></span>
-      </div>
-      <div class="chart-scroll"><div id="chart-anatomy"></div></div>
-    </div>
-  </section>
-
-  <section>
-    <h2>How this works</h2>
-    <p class="note">Every model gets the <strong>same prompt</strong> on a schedule, and we time
-      the reply. Nothing is executed and nothing is graded.</p>
-    <div class="card">
-      <ul class="rules">
-        <li><strong>One fixed prompt.</strong> A hash of it (<code id="psha">&mdash;</code>) is
-          stored on every run, and the charts mark the point where it changes, so an edit
-          shows up as a break rather than passing for a change in speed.</li>
-        <li><strong>Settings are pinned.</strong> Reasoning effort and thinking mode are fixed per
-          model and recorded on each run. Both affect latency.</li>
-        <li><strong>Nothing is smoothed.</strong> No averaging, no adjusting for length. A model
-          that wrote more took longer.</li>
-      </ul>
-    </div>
+    <p class="note">The latest run from each model, split three ways: time on the wire
+      (<strong>transport</strong>), time spent <strong>thinking</strong> before a single word
+      appears, and time spent <strong>writing</strong>. Thinking is the part you sit through in
+      silence, and on most reasoning models it is the largest slice.
+      <br><br>
+      Some providers send nothing at all until reasoning has finished, which makes transport and
+      thinking arrive as one indistinguishable block. Those models are marked
+      <strong>not separable</strong> rather than being shown with a thinking time of zero — the
+      silence is real either way, we just cannot say where it went.</p>
     <div class="card" style="margin-top:14px">
       <div class="chart-scroll">
       <svg viewBox="0 88 900 176" width="900" style="max-width:100%" role="img"
@@ -413,7 +619,11 @@
         <g class="dg-seglab">
           <text x="69"  y="129">network</text>
           <text x="211" y="129">provider queue</text>
-          <text x="146" y="104" class="dg-brace">&#9660; first byte back &#8212; measured</text>
+          <!-- Anchored at the transport/reasoning boundary, which is the moment
+               the first byte actually lands. Previously centred at x=146 (the
+               middle of the transport span), where it both pointed at nothing
+               in particular and ran straight through the section heading. -->
+          <text x="292" y="104" class="dg-brace" text-anchor="start">&#9660; first byte back &#8212; measured</text>
           <text x="425" y="129">reasoning (silent)</text>
           <text x="729" y="129" class="dg-onfill">writing</text>
         </g>
@@ -447,6 +657,36 @@
       </p>
     </div>
 
+    <div class="card">
+      <div class="legend">
+        <span class="legend-item"><span class="swatch" style="background:var(--text-muted);opacity:.28"></span>Transport</span>
+        <span class="legend-item"><span class="swatch" style="background:repeating-linear-gradient(45deg,var(--series-1) 0 3px,color-mix(in srgb,var(--series-1) 20%,transparent) 3px 7px)"></span>Thinking <span style="color:var(--text-muted)">(striped, model colour)</span></span>
+        <span class="legend-item"><span class="swatch" style="background:var(--text-muted);opacity:.45"></span>Silent, not separable</span>
+        <span class="legend-item"><span class="swatch" style="background:linear-gradient(120deg,var(--series-1),var(--series-3),var(--series-4))"></span>Writing <span style="color:var(--text-muted)">(model colour)</span></span>
+      </div>
+      <div class="chart-scroll"><div id="chart-anatomy"></div></div>
+    </div>
+  </section>
+
+  <div class="zone zone-method">
+    <span class="zone-label">Method &amp; reference</span>
+  </div>
+
+  <section>
+    <h2>How this works</h2>
+    <p class="note">Every model gets the <strong>same prompt</strong> on a schedule, and we time
+      the reply. Nothing is executed and nothing is graded.</p>
+    <div class="card">
+      <ul class="rules">
+        <li><strong>One fixed prompt.</strong> A hash of it (<code id="psha">&mdash;</code>) is
+          stored on every run, and the charts mark the point where it changes, so an edit
+          shows up as a break rather than passing for a change in speed.</li>
+        <li><strong>Settings are pinned.</strong> Reasoning effort and thinking mode are fixed per
+          model and recorded on each run. Both affect latency.</li>
+        <li><strong>Nothing is smoothed.</strong> No averaging, no adjusting for length. A model
+          that wrote more took longer.</li>
+      </ul>
+    </div>
   </section>
 
   <section>
@@ -472,15 +712,32 @@
       generation speed for models that reason silently and then send the answer at once, and
       <strong>output tokens</strong> are not comparable between Opus 4.6 and 4.7+ (different
       tokenizers). Every model runs at <code>medium</code> effort with adaptive thinking.</p>
+    <!-- Static so the roster survives without JS: the table below is built from
+         results.json at runtime, so a crawler (or a reader on a slow fetch) would
+         otherwise see an empty page with no model named anywhere on it.
+         Keep in sync with the enabled entries in bench/models.json. -->
+    <p class="note">Currently tracking
+      <strong>Claude Opus 5</strong>, <strong>Claude Fable 5</strong> and
+      <strong>Claude Sonnet 5</strong> from Anthropic, alongside the older
+      <strong>Claude Opus 4.8</strong>, <strong>4.7</strong> and <strong>4.6</strong>;
+      <strong>GPT-5.6 Sol</strong> and <strong>GPT-5.6 Terra</strong> from OpenAI; and
+      <strong>Grok 4.5</strong> from xAI.</p>
     <div class="card chart-scroll"><table id="table"></table></div>
   </section>
+
+  </div><!-- /col-main -->
+
+  <!-- At-a-glance status for every model, pinned while the evidence scrolls.
+       Fills the empty right column the 1060px wrap used to leave behind, and
+       answers "is anything wrong right now" without a trip to the tiles. -->
+  </div><!-- /layout -->
 
   <div class="tooltip" id="tooltip"></div>
 </div>
 </div>
 
 <script>
-const SLOTS = 8;
+const SLOTS = 12;
 const tooltip = document.getElementById('tooltip');
 
 const fmtMs = ms => ms == null ? '—' : ms >= 60000
@@ -495,6 +752,21 @@ const median = xs => {
   return s.length % 2 ? s[m] : Math.round((s[m-1] + s[m]) / 2);
 };
 const colorOf = i => `var(--series-${(i % SLOTS) + 1})`;
+
+// Colour identifies a model, everywhere on the page. That contract only holds
+// if the colour is assigned ONCE from the full model list -- not from whatever
+// subset a given renderer happens to be holding. Assigning per-renderer is what
+// made GPT-5.6 Sol blue in the per-vendor facets (index 0 within OpenAI) and
+// purple in the tiles (index 6 within the whole list), on the same screen.
+// Keyed off the model key rather than the array position so a model appearing
+// or dropping out of a time range does not reshuffle everyone else's colour.
+const COLOR_BY_KEY = new Map();
+function assignColors(allSeries) {
+  COLOR_BY_KEY.clear();
+  allSeries.forEach((s, i) => COLOR_BY_KEY.set(s.key, colorOf(i)));
+}
+const colorFor = key => COLOR_BY_KEY.get(key) || 'var(--text-muted)';
+const slugOf = key => String(key).replace(/[^a-z0-9]+/gi, '-');
 
 // Latency spans orders of magnitude -- 6s to 4min in one panel -- so a linear
 // axis lets a single spike flatten everything else against the baseline. Log
@@ -528,14 +800,14 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
   const iw = W - M.l - M.r, ih = H - M.t - M.b;
 
   const prepared = series.map((s, i) => ({
-    key: s.key, label: s.label, color: colorOf(i),
+    key: s.key, label: s.label, color: colorFor(s.key),
     points: s.runs
       .filter(r => r.status === 'ok' && pick(r) != null)
       .map(r => ({ t: Date.parse(r.ts), v: pick(r), healthy: r.health === 'ok', run: r }))
   })).filter(s => s.points.length);
 
   if (legendMount) legendMount.innerHTML = prepared.map(s =>
-    `<span class="legend-item"><span class="swatch" style="background:${s.color}"></span>${s.label}</span>`
+    `<span class="legend-item hl" data-key="${s.key}"><span class="swatch" style="background:${s.color}"></span>${s.label}</span>`
   ).join('');
 
   if (!prepared.length) { mount.innerHTML = '<p class="empty">No completed runs yet.</p>'; return; }
@@ -548,19 +820,16 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
   let ticks, yMin, yMax, Yfrac;
   if (logScale) {
     const dataMin = Math.min(...all.map(p => p.v));
-    // Snap to the nearest 1/2/5 step, not a whole decade -- rounding 3.5 min up
-    // to 16.7 min left half the panel empty.
-    const step = (v, up) => {
-      const d = Math.floor(Math.log10(v));
-      const cand = [1, 2, 5, 10].map(m => m * Math.pow(10, d));
-      return up ? cand.find(c => c >= v * 0.999) : [...cand].reverse().find(c => c <= v * 1.001);
-    };
-    yMin = step(Math.max(1, dataMin), false);
-    yMax = step(dataMax, true);
-    if (!(yMax > yMin)) yMax = yMin * 10;   // one flat value would give a zero-height axis
-    ticks = logTicks(yMin, yMax);
-    const lg = Math.log10(yMax) - Math.log10(yMin);
-    Yfrac = v => (Math.log10(Math.max(v, yMin)) - Math.log10(yMin)) / lg;
+    // End the domain at the data plus a small pad, the same way the cards do.
+    // Snapping up to the next 1/2/5 step put a 1.7 min ceiling above a 51s
+    // maximum and left the top half of the panel empty.
+    const lo = Math.log10(Math.max(1, dataMin));
+    const hi = Math.log10(Math.max(dataMax, Math.max(1, dataMin) * 1.5));
+    const pad = Math.max((hi - lo) * 0.06, 0.02);
+    const a = lo - pad, b = hi + pad;
+    yMin = Math.pow(10, a); yMax = Math.pow(10, b);
+    ticks = logTicks(Math.pow(10, lo), Math.pow(10, hi));
+    Yfrac = v => (Math.log10(Math.max(v, 1)) - a) / (b - a);
   } else {
     ticks = niceTicks(dataMax);
     yMin = 0; yMax = ticks[ticks.length - 1];
@@ -620,12 +889,24 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
   prepared.forEach(s => {
     const pts = [...s.points].sort((a,b) => a.t - b.t);
     const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+    svg.push(`<g class="ser" data-key="${s.key}">`);
     svg.push(`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
     pts.forEach(p => svg.push(
-      `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="4" fill="${p.healthy ? s.color : 'var(--surface-1)'}" stroke="${s.color}" stroke-width="2"/>`));
+      `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3.5" fill="${p.healthy ? s.color : 'var(--surface-1)'}" stroke="${s.color}" stroke-width="2"/>`));
+    svg.push('</g>');
   });
   svg.push('</svg>');
   mount.innerHTML = svg.join('');
+
+  // Focus + context. Nine models on one panel is unreadable as a static image --
+  // hovering a legend entry drops everything else back so a single trace can be
+  // followed end to end without losing the others as reference.
+  if (legendMount) legendMount.querySelectorAll('.legend-item').forEach(item => {
+    const dim = on => mount.querySelectorAll('.ser').forEach(g =>
+      g.style.opacity = !on ? 1 : (g.dataset.key === item.dataset.key ? 1 : 0.12));
+    item.addEventListener('mouseenter', () => dim(true));
+    item.addEventListener('mouseleave', () => dim(false));
+  });
 
   // Crosshair + shared tooltip: nearest timestamp across all series.
   const stamps = [...new Set(all.map(p => p.t))].sort((a,b) => a-b);
@@ -656,11 +937,6 @@ function lineChart(mount, legendMount, series, pick, formatter, yTitle, refLine,
   node.addEventListener('mouseleave', () => { tooltip.style.opacity = 0; cross.style.opacity = 0; });
 }
 
-// Colour only has to separate models WITHIN a vendor, so each facet restarts
-// at slot 1. That is what removes the 8-model ceiling: a single-hue family per
-// vendor cannot work (six steps of one hue land at deltaE ~6 against a floor of
-// 15, indistinguishable even with full colour vision), but faceting gets the
-// same vendor grouping without asking hue to carry it.
 // Runs carry the hash of the prompt that produced them. When that changes the
 // series is no longer continuous, so mark it -- otherwise the discontinuity
 // looks like a latency event rather than a change of question.
@@ -677,6 +953,212 @@ function promptBreaks(series) {
   return [...firstSeen.values()].sort((a, b) => a - b).slice(1);   // skip the original
 }
 
+// Small multiples: one panel per model, all sharing one set of axes.
+//
+// The overlay this replaces put six Anthropic lines in a single panel, four of
+// them inside a compressed 4-10s band, crossing constantly -- no reader can
+// follow an individual line through that, and the legend forced a colour->name
+// lookup on every glance. Faceting by vendor did not help: vendor is an
+// organisational fact, not a property of the data, and it split the models
+// 6/2/1 so the tangle stayed in panel one while panel three held a single line.
+//
+// One model per panel removes the overplotting outright. The axes stay SHARED,
+// which is what preserves the cross-model comparison the overlay was providing,
+// and each model's name sits on its own panel, so there is nothing to look up.
+// Every other model is drawn behind in faint grey as context -- the shape of the
+// field, without competing for the foreground.
+const SM_W = 300, SM_H = 132;
+const SM_M = { t: 9, r: 9, b: 15, l: 42 };
+
+// statsByKey carries the CURRENT-PROMPT-ONLY view of each model. The trace draws
+// every prompt (with a break marker where it changed), but anything that judges a
+// run -- verdict, typical, thinking share -- has to stay inside one prompt, or
+// every model reads as wildly off its baseline the moment the question changes.
+function smallMultiples(mount, legendMount, series, pick, formatter, refLine, scale, statsByKey) {
+  if (legendMount) legendMount.innerHTML = '';
+  const prepared = series.map(s => ({
+    key: s.key, label: s.label, vendor: s.vendor, color: colorFor(s.key),
+    points: s.runs
+      .filter(r => r.status === 'ok' && pick(r) != null)
+      .map(r => ({ t: Date.parse(r.ts), v: pick(r), healthy: r.health === 'ok', run: r }))
+      .sort((a, b) => a.t - b.t)
+  })).filter(s => s.points.length);
+  if (!prepared.length) { mount.innerHTML = '<p class="empty">No completed runs yet.</p>'; return; }
+
+  const all = prepared.flatMap(s => s.points);
+  const t0 = Math.min(...all.map(p => p.t)), t1 = Math.max(...all.map(p => p.t));
+  const span = Math.max(t1 - t0, 1);
+  const vals = all.map(p => p.v);
+  const dataMin = Math.min(...vals), dataMax = Math.max(...vals);
+  const logScale = scale === 'log';
+
+  // Domain ends at the data, plus a small breathing pad -- NOT at the next log
+  // tick. Rounding up to the tick ceiling is what left ~1.7 min of headroom above
+  // a 50s maximum and wasted most of the vertical space in every panel.
+  let Yfrac, ticks;
+  if (logScale) {
+    const lo = Math.log10(Math.max(1, dataMin)), hi = Math.log10(Math.max(dataMax, dataMin * 1.5));
+    const pad = Math.max((hi - lo) * 0.08, 0.02);
+    const a = lo - pad, b = hi + pad;
+    Yfrac = v => (Math.log10(Math.min(Math.max(v, 1), Math.pow(10, b))) - a) / (b - a);
+    ticks = logTicks(Math.pow(10, lo), Math.pow(10, hi));
+  } else {
+    const top = dataMax * 1.08 || 1;
+    Yfrac = v => v / top;
+    ticks = [0, dataMax / 2, dataMax];
+  }
+  // Three gridlines at most. More is noise at 132px tall, and the identical
+  // ticks repeating across nine panels is what makes them comparable at a glance.
+  if (ticks.length > 3) {
+    const pick3 = [ticks[0], ticks[Math.floor((ticks.length - 1) / 2)], ticks[ticks.length - 1]];
+    ticks = [...new Set(pick3)];
+  }
+
+  const iw = SM_W - SM_M.l - SM_M.r, ih = SM_H - SM_M.t - SM_M.b;
+  const X = t => SM_M.l + ((t - t0) / span) * iw;
+  const Y = v => SM_M.t + ih - Yfrac(v) * ih;
+  const pathOf = pts => pts.map((p, i) =>
+    `${i ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+
+  const breaks = (promptBreaks(series) || []).filter(t => t >= t0 && t <= t1);
+  const stampFmt = span > 86400000 * 2 ? { month: 'short', day: 'numeric' }
+                 : { month: 'short', day: 'numeric', hour: 'numeric' };
+  const stamp = t => new Date(t).toLocaleString('en-US', stampFmt);
+
+  const panels = prepared.map(s => {
+    const st = statsByKey && statsByKey.get(s.key);   // declared up here: the band reads it too
+    const g = [`<svg viewBox="0 0 ${SM_W} ${SM_H}" style="width:100%;height:auto" role="img"
+                 aria-label="${s.label}: ${formatter(s.points[s.points.length - 1].v)} on its latest run">`];
+    ticks.forEach(v => {
+      g.push(`<line class="grid-line" x1="${SM_M.l}" y1="${Y(v)}" x2="${SM_M.l + iw}" y2="${Y(v)}"/>`);
+      g.push(`<text class="tick sm-tick" x="${SM_M.l - 6}" y="${Y(v) + 3.5}" text-anchor="end">${formatter(v)}</text>`);
+    });
+    // Where this model normally lives: the middle 50% of its runs, q1 to q3.
+    //
+    // This was mean +/- 1 standard deviation, which is the wrong statistic for
+    // this data. Latency is right-skewed and bounded below by zero, so a
+    // symmetric interval misdescribes it in both directions at once: a single
+    // 47s run inflates sigma enough to push the lower edge far below anything
+    // ever observed, and the band stops matching where the runs actually sit.
+    // Quartiles are unmoved by how extreme the extremes are, cannot go negative
+    // on positive data, and state something a reader can check: half its runs
+    // are in here. It is also the same family of statistic the verdict tests
+    // with, so the band and the judgement stop being unrelated definitions of
+    // "normal" -- the band is the box, the verdict's range is the fence around it.
+    //
+    // Scoped to the current prompt so the band describes the same population the
+    // verdict judges, rather than mixing runs that answered different questions.
+    const inScope = st ? new Set(st.runs.map(r => r.ts)) : null;
+    const vv = (inScope ? s.points.filter(p => inScope.has(p.run.ts)) : s.points)
+      .map(p => p.v).sort((a, b) => a - b);
+    if (vv.length >= 4) {
+      const bLo = quantile(vv, 0.25), bHi = quantile(vv, 0.75);
+      if (bHi > bLo) {
+        const yHi = Y(bHi), yLo = Y(bLo);
+        g.push(`<rect x="${SM_M.l}" y="${yHi.toFixed(1)}" width="${iw}"
+                 height="${Math.max(1, yLo - yHi).toFixed(1)}" fill="${s.color}" opacity="0.1"/>`);
+        [yHi, yLo].forEach(y => g.push(`<line x1="${SM_M.l}" y1="${y.toFixed(1)}"
+          x2="${SM_M.l + iw}" y2="${y.toFixed(1)}" stroke="${s.color}" stroke-width="1" opacity="0.45"/>`));
+      }
+    }
+    if (refLine != null) g.push(`<line x1="${SM_M.l}" y1="${Y(refLine)}" x2="${SM_M.l + iw}" y2="${Y(refLine)}"
+      stroke="var(--text-secondary)" stroke-width="1" stroke-dasharray="4 3"/>`);
+    breaks.forEach(t => g.push(`<line x1="${X(t)}" y1="${SM_M.t}" x2="${X(t)}" y2="${SM_M.t + ih}"
+      stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="2 3"/>`));
+
+    // Context first, so the model's own line always sits on top of it.
+    prepared.forEach(o => { if (o.key !== s.key)
+      g.push(`<path d="${pathOf(o.points)}" fill="none" stroke="var(--axis)" stroke-width="1" opacity="0.2"/>`); });
+
+    g.push(`<path d="${pathOf(s.points)}" fill="none" stroke="${s.color}" stroke-width="1.8"
+             stroke-linejoin="round" stroke-linecap="round"/>`);
+    // Markers only where they carry information: an empty or refused response.
+    // A filled dot on every run was pure density -- nine panels of it read as
+    // texture rather than as data.
+    s.points.forEach(p => { if (!p.healthy)
+      g.push(`<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3.2"
+               fill="var(--surface-1)" stroke="${s.color}" stroke-width="1.8"/>`); });
+    const last = s.points[s.points.length - 1];
+    g.push(`<circle cx="${X(last.t).toFixed(1)}" cy="${Y(last.v).toFixed(1)}" r="2.6" fill="${s.color}"/>`);
+    g.push(`<line class="crosshair sm-ch" x1="0" y1="${SM_M.t}" x2="0" y2="${SM_M.t + ih}" style="opacity:0"/>`);
+    g.push('</svg>');
+
+    // Everything the Model health tile used to carry, on the card that already
+    // shows the trace. The tile's own sparkline was a 14-run, axis-less copy of
+    // the chart directly above it, and its headline number was the same number
+    // twice on one screen.
+    const sOk = st ? st.runs.filter(r => r.status === 'ok' && r.total_ms != null) : [];
+    let value = '&mdash;', vLine = '', foot = '';
+    if (sOk.length) {
+      const sLatest = sOk[sOk.length - 1];
+      const prior = sOk.slice(0, -1).map(r => r.total_ms);
+      const v = verdict(sLatest.total_ms, prior);
+      const base = prior.length ? median(prior) : null;
+      const sp = splitRun(sLatest);
+      const silent = sp.separable ? sp.transport + sp.think : sp.wait;
+      value = fmtMs(sLatest.total_ms);
+      vLine = `<div class="verdict ${v.cls}"><span>${v.icon}</span> ${v.text}</div>`;
+      foot = `<div class="sm-foot">
+        <span>${base != null ? `typical ${fmtMs(base)}` : `${sOk.length} completed`}</span>
+        <span>${sp.separable
+          ? `thinking ${Math.round(sp.think / sp.total * 100)}%`
+          : `silent ${Math.round(silent / sp.total * 100)}%<span class="q" title="This provider streams nothing until reasoning finishes, so thinking cannot be separated from transport.">?</span>`}</span>
+      </div>`;
+    } else {
+      const lastAny = st && st.runs[st.runs.length - 1];
+      vLine = `<div class="verdict v-bad"><span>&#9650;</span> ${
+        lastAny && lastAny.status === 'refusal' ? 'declining every request'
+        : lastAny && lastAny.status === 'error' ? 'erroring on every request'
+        : 'no completed runs'}</div>`;
+    }
+
+    return `<div class="sm" data-key="${s.key}">
+      <div class="sm-head">
+        <span class="swatch" style="background:${s.color}"></span>
+        <span class="sm-name">${s.label}</span>
+        <span class="sm-vendor">${s.vendor || ''}</span>
+      </div>
+      <div class="sm-value">${value}</div>
+      ${vLine}${g.join('')}${foot}
+    </div>`;
+  }).join('');
+
+  mount.innerHTML = `<p class="sm-range">${stamp(t0)} &rarr; ${stamp(t1)} &middot; every card shares
+    the same axes${logScale ? ' (log)' : ''} &middot; the shaded band holds the middle 50% of that
+    model&rsquo;s runs &middot; grey lines are the other models</p>
+    <div class="sm-grid">${panels}</div>`;
+
+  // Per-panel readout. The overlay needed one tooltip listing all nine models at
+  // the hovered time; here the panel already says which model it is, so the
+  // tooltip spends its space on that run's detail instead.
+  const byKey = new Map(prepared.map(s => [s.key, s]));
+  mount.querySelectorAll('.sm').forEach(panel => {
+    const s = byKey.get(panel.dataset.key);
+    const node = panel.querySelector('svg'), cross = panel.querySelector('.sm-ch');
+    node.addEventListener('mousemove', ev => {
+      const box = node.getBoundingClientRect();
+      const t = t0 + (((ev.clientX - box.left) * (SM_W / box.width) - SM_M.l) / iw) * span;
+      const hit = s.points.reduce((a, b) => Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a);
+      cross.setAttribute('x1', X(hit.t)); cross.setAttribute('x2', X(hit.t));
+      cross.style.opacity = 1;
+      const r = hit.run;
+      tooltip.innerHTML = `<div class="tt-title">${s.label} &middot; ${new Date(hit.t).toLocaleString('en-US',
+          { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>`
+        + `<div class="tt-row">total<span class="val${hit.healthy ? '' : ' bad'}">${formatter(hit.v)}${hit.healthy ? '' : ' !'}</span></div>`
+        + (r.ttft_ms != null ? `<div class="tt-row">first token<span class="val">${fmtMs(r.ttft_ms)}</span></div>` : '')
+        + (r.thinking_ms != null ? `<div class="tt-row">thinking<span class="val">${fmtMs(r.thinking_ms)}</span></div>` : '')
+        + (r.output_tokens != null ? `<div class="tt-row">output<span class="val">${fmtNum(r.output_tokens)} tok</span></div>` : '');
+      tooltip.style.opacity = 1;
+      const tb = tooltip.getBoundingClientRect();
+      let left = ev.clientX + 14;
+      if (left + tb.width > window.innerWidth - 8) left = ev.clientX - tb.width - 14;
+      tooltip.style.left = (left + window.scrollX) + 'px';
+      tooltip.style.top = (ev.clientY + window.scrollY - tb.height / 2) + 'px';
+    });
+    node.addEventListener('mouseleave', () => { tooltip.style.opacity = 0; cross.style.opacity = 0; });
+  });
+}
+
 function facetedChart(mount, legendMount, series, pick, formatter, refLine, scale) {
   if (legendMount) legendMount.innerHTML = '';
   const byVendor = {};
@@ -690,8 +1172,8 @@ function facetedChart(mount, legendMount, series, pick, formatter, refLine, scal
     `<div class="facet">
        <div class="facet-head">
          <span class="facet-name">${vendor}</span>
-         <span class="facet-legend">${models.map((m, i) =>
-           `<span class="legend-item"><span class="swatch" style="background:${colorOf(i)}"></span>${m.label}</span>`
+         <span class="facet-legend" id="facet-lg-${vi}">${models.map(m =>
+           `<span class="legend-item hl" data-key="${m.key}"><span class="swatch" style="background:${colorFor(m.key)}"></span>${m.label}</span>`
          ).join('')}</span>
        </div>
        <div class="chart-scroll"><div id="facet-${vi}"></div></div>
@@ -699,8 +1181,47 @@ function facetedChart(mount, legendMount, series, pick, formatter, refLine, scal
 
   const breaks = promptBreaks(series);
   Object.entries(byVendor).forEach(([vendor, models], vi) => {
-    lineChart(document.getElementById(`facet-${vi}`), null, models, pick, formatter, vendor, refLine, sharedMax, 210, breaks, scale);
+    const panel = document.getElementById(`facet-${vi}`);
+    lineChart(panel, null, models, pick, formatter, vendor, refLine, sharedMax, 210, breaks, scale);
+    // lineChart wires highlight-and-dim only for a legend it built itself. The
+    // facet legends are built here, so they get wired here -- scoped to their own
+    // panel, or hovering an Anthropic model would dim the OpenAI facet too.
+    document.getElementById(`facet-lg-${vi}`).querySelectorAll('.legend-item').forEach(item => {
+      const dim = on => panel.querySelectorAll('.ser').forEach(g =>
+        g.style.opacity = !on ? 1 : (g.dataset.key === item.dataset.key ? 1 : 0.12));
+      item.addEventListener('mouseenter', () => dim(true));
+      item.addEventListener('mouseleave', () => dim(false));
+    });
   });
+}
+
+// A stream event that arrives before any reasoning has happened times the
+// network. One that arrives only after reasoning has finished times the network
+// AND the reasoning, with no way to tell them apart after the fact -- which is
+// what OpenAI's chat completions endpoint does today: it sends nothing until the
+// model stops reasoning, so ttfb absorbs the whole silent phase and thinking_ms
+// falls out as ~0. Reporting that as "this model does not think" would be a
+// straight falsehood, so any run claiming near-zero thinking behind an
+// implausibly long transport is treated as unsplittable instead.
+//
+// The ceiling is deliberately generous. Real transport from one region is ~1-2s
+// (Anthropic measures 1.1-2.6s); nothing legitimate spends four seconds on TLS
+// and a round trip.
+const TRANSPORT_CEILING_MS = 4000;
+const NO_THINK_MS = 100;
+
+function splitRun(run) {
+  const total = run.total_ms;
+  const ttft = run.ttft_ms || 0;
+  const write = Math.max(0, total - ttft);
+  const ttfb = run.ttfb_ms, think = run.thinking_ms;
+  // Runs from before ttfb was recorded carry nulls; they get the old two-way
+  // split rather than a fabricated zero.
+  const separable = ttfb != null && think != null
+                 && !(think < NO_THINK_MS && ttfb > TRANSPORT_CEILING_MS);
+  return separable
+    ? { separable: true, transport: ttfb, think, write, total }
+    : { separable: false, wait: ttft, write, total };
 }
 
 function anatomyChart(mount, series) {
@@ -711,26 +1232,52 @@ function anatomyChart(mount, series) {
   rows.sort((a, b) => b.run.total_ms - a.run.total_ms);
 
   const W = Math.max(720, mount.clientWidth || 720);
-  const L = 132, R = 96, BAR = 26, GAP = 12, TOP = 8;
+  const L = 132, R = 150, BAR = 26, GAP = 12, TOP = 8;
   const iw = W - L - R;
   const H = TOP + rows.length * (BAR + GAP) + 26;
   const max = Math.max(...rows.map(r => r.run.total_ms));
   const X = ms => (ms / max) * iw;
+  // 2px surface gap between segments so adjacent blocks never read as one mark
+  const seg = (x, y, w, fill, op) =>
+    `<rect x="${x}" y="${y}" width="${Math.max(0, w - 2)}" height="${BAR}" rx="3" fill="${fill}"${op ? ` opacity="${op}"` : ''}/>`;
+  const label = (x, y, text) =>
+    `<text class="seg-label" x="${x}" y="${y + BAR / 2 + 4}" text-anchor="middle">${text}</text>`;
 
-  const out = [`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Waiting versus writing time per model">`];
+  // Thinking is striped in the model's OWN colour rather than in grey: it is the
+  // model's time, same as writing, and colouring it grey filed it mentally with
+  // transport -- overhead happening TO the model instead of work done BY it.
+  // The stripes keep it readable as a separate phase from the solid writing block.
+  const defs = rows.map(r =>
+    `<pattern id="an-th-${slugOf(r.s.key)}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`
+    + `<rect width="7" height="7" fill="${colorFor(r.s.key)}" opacity="0.2"/>`
+    + `<line x1="0" y1="0" x2="0" y2="7" stroke="${colorFor(r.s.key)}" stroke-width="3.4"/></pattern>`).join('');
+
+  const out = [`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Transport, thinking and writing time for the latest run of each model">`,
+               `<defs>${defs}</defs>`];
   rows.forEach((r, n) => {
     const y = TOP + n * (BAR + GAP);
-    const wait = r.run.ttft_ms || 0;
-    const write = Math.max(0, r.run.total_ms - wait);
-    const wWait = X(wait), wWrite = X(write);
-    const pct = Math.round((wait / r.run.total_ms) * 100);
+    const p = splitRun(r.run);
     out.push(`<text class="tick" x="${L - 10}" y="${y + BAR / 2 + 4}" text-anchor="end">${r.s.label}</text>`);
-    // 2px surface gap between the two segments so they never read as one mark
-    out.push(`<rect x="${L}" y="${y}" width="${Math.max(0, wWait - 2)}" height="${BAR}" rx="3" fill="var(--text-muted)" opacity="0.45"/>`);
-    out.push(`<rect x="${L + wWait}" y="${y}" width="${Math.max(2, wWrite)}" height="${BAR}" rx="3" fill="${colorOf(r.i)}"/>`);
-    out.push(`<text class="tick" x="${L + wWait + wWrite + 9}" y="${y + BAR / 2 + 4}">${fmtMs(r.run.total_ms)}</text>`);
-    if (wWait > 46) out.push(
-      `<text class="tick" x="${L + wWait / 2}" y="${y + BAR / 2 + 4}" text-anchor="middle" fill="var(--text-primary)">${pct}% waiting</text>`);
+
+    if (p.separable) {
+      const wT = X(p.transport), wK = X(p.think), wW = X(p.write);
+      out.push(seg(L, y, wT, 'var(--text-muted)', 0.28));
+      out.push(seg(L + wT, y, wK, `url(#an-th-${slugOf(r.s.key)})`));
+      out.push(seg(L + wT + wK, y, Math.max(2, wW), colorFor(r.s.key)));
+      // The headline number: thinking as a share of the whole wait.
+      if (wK > 76) out.push(label(L + wT + wK / 2, y, `${Math.round(p.think / p.total * 100)}% thinking`));
+    } else {
+      const wWait = X(p.wait), wW = X(p.write);
+      // Solid grey: one undifferentiated block of silence. It reads as a single
+      // unresolved span precisely because it carries none of the striping that
+      // marks thinking on the models we can split.
+      out.push(seg(L, y, wWait, 'var(--text-muted)', 0.45));
+      out.push(seg(L + wWait, y, Math.max(2, wW), colorFor(r.s.key)));
+      if (wWait > 74) out.push(label(L + wWait / 2, y, `${Math.round(p.wait / p.total * 100)}% silent`));
+    }
+
+    const tail = fmtMs(p.total) + (p.separable ? '' : '  &middot; not separable');
+    out.push(`<text class="tick" x="${L + X(p.total) + 9}" y="${y + BAR / 2 + 4}">${tail}</text>`);
   });
   out.push('</svg>');
   mount.innerHTML = out.join('');
@@ -751,41 +1298,48 @@ function quantile(sorted, q) {
   const i = (sorted.length - 1) * q, lo = Math.floor(i), hi = Math.ceil(i);
   return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
 }
+// The fence is computed on log(value), not on raw milliseconds.
+//
+// An additive fence assumes a symmetric distribution. Latency is neither
+// symmetric nor unbounded below: it is right-skewed and strictly positive. On
+// Claude Opus 5 that produced q1 - 1.5*IQR = -2.0 s -- not a bound at all, since
+// no run can be negative, so nothing could ever read as unusually fast and the
+// card had only half a range to report. Fencing in log space makes the interval
+// multiplicative, which is the right shape for this data and cannot cross zero.
 function fences(values) {
-  const v = [...values].sort((a, b) => a - b);
-  const q1 = quantile(v, 0.25), q3 = quantile(v, 0.75), iqr = q3 - q1;
-  const mid = median(v);
-  // With few samples the IQR can collapse to ~0; fall back to a proportional
-  // band so a tiny spread does not make every run look like an outlier.
-  const pad = Math.max(1.5 * iqr, mid * 0.35);
-  return { lo: q1 - pad, hi: q3 + pad, mid };
+  const pos = values.filter(v => v > 0);
+  const mid = median(values);
+  if (pos.length < 2) return { lo: 0, hi: Infinity, mid };
+  const L = pos.map(Math.log).sort((a, b) => a - b);
+  const q1 = quantile(L, 0.25), q3 = quantile(L, 0.75), iqr = q3 - q1;
+  // With few samples the IQR can collapse to ~0; 0.3 in log space is roughly
+  // +/-35%, the same floor the additive version used, expressed as a ratio.
+  const pad = Math.max(1.5 * iqr, 0.3);
+  return { lo: Math.exp(q1 - pad), hi: Math.exp(q3 + pad), mid };
 }
 
-function sparkline(runs, color) {
-  const pts = runs.slice(-14).map(r => r.total_ms);
-  if (pts.length < 2) return '';
-  const W = 68, H = 18, lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
-  const d = pts.map((v, i) =>
-    `${i ? 'L' : 'M'}${(i / (pts.length - 1) * W).toFixed(1)},${(H - ((v - lo) / span) * (H - 3) - 1.5).toFixed(1)}`
-  ).join(' ');
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">`
-       + `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" `
-       + `stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
 
 function judge(latest, prior) {
   if (prior.length < MIN_BASELINE) return { state: 'unknown', n: prior.length };
   const f = fences(prior);
   const ratio = latest / f.mid;
   const pct = Math.abs(Math.round((ratio - 1) * 100));
-  // Two independent tests, either of which counts:
-  //   1. outside the model's own fence  -- catches subtle drift in steady models
-  //   2. more than double its median    -- backstop, because a very erratic
-  //      model gets a huge fence and can otherwise hide behind its own noise
+  // Two independent slow tests, and the run has to clear BOTH:
+  //   1. the model's own fence      -- catches subtle drift in steady models
+  //   2. twice its median           -- backstop, because a very erratic model
+  //      gets a huge fence and can otherwise hide behind its own noise
   //      (Opus 4.6 once ran 2.1x its median and cleared the fence by 0.9s)
-  if (latest > f.hi || ratio > 2) return { state: 'slow', pct, mid: f.mid, ratio };
-  if (latest < f.lo) return { state: 'fast', pct, mid: f.mid, ratio };
-  return { state: 'ok', pct, mid: f.mid, ratio };
+  //
+  // Collapsing them into one bound is what makes the range reportable. Kept as
+  // `latest > f.hi || ratio > 2`, the effective threshold was the LOWER of the
+  // two, and the card quoted f.hi -- so Opus 5 advertised 33.2s while actually
+  // flagging at 26.8s. lo/hi now ARE the tested bounds, so the sentence on the
+  // card cannot describe a boundary the judgement does not use.
+  const hi = Math.min(f.hi, f.mid * 2), lo = f.lo;
+  const band = { lo, hi };
+  if (latest > hi) return { state: 'slow', pct, mid: f.mid, ratio, ...band };
+  if (latest < lo) return { state: 'fast', pct, mid: f.mid, ratio, ...band };
+  return { state: 'ok', pct, mid: f.mid, ratio, ...band };
 }
 
 function verdict(latest, prior) {
@@ -794,7 +1348,14 @@ function verdict(latest, prior) {
     return { cls: 'v-wait', icon: '&#9679;', text: `building baseline &middot; ${j.n} run${j.n === 1 ? '' : 's'}` };
   if (j.state === 'slow') return { cls: 'v-bad',  icon: '&#9650;', text: `${j.pct}% slower than usual` };
   if (j.state === 'fast') return { cls: 'v-good', icon: '&#9660;', text: `${j.pct}% faster than usual` };
-  return { cls: 'v-ok', icon: '&#9679;', text: 'within its usual range' };
+  // These are exactly the bounds judge() tested against -- a log-space fence
+  // capped at twice the median -- so both are always real, positive numbers and
+  // the sentence states the actual pass condition.
+  const hi = fmtMs(Math.round(j.hi));
+  return { cls: 'v-ok', icon: '&#9679;',
+           text: j.lo >= 1 && isFinite(j.hi)
+             ? `within its usual range of ${fmtMs(Math.round(j.lo))} to ${hi}`
+             : 'within its usual range' };
 }
 
 // A verdict compares a run to that model's baseline -- which is only meaningful
@@ -806,6 +1367,31 @@ function currentPromptOnly(series) {
     .find(r => r.prompt_sha)?.prompt_sha;
   if (!latest) return series;
   return series.map(s => ({ ...s, runs: s.runs.filter(r => !r.prompt_sha || r.prompt_sha === latest) }));
+}
+
+// Attribute a slow run to thinking or to writing by comparing each phase with
+// its own baseline. Returns '' whenever the answer is not clear-cut: a hedged
+// cause is worse than none, because it invites the reader to trust it anyway.
+function causeOf(s) {
+  if (!s) return '';
+  const ok = s.runs.filter(r => r.status === 'ok' && r.total_ms != null && r.ttft_ms != null);
+  if (ok.length < MIN_BASELINE + 1) return '';
+  const latest = ok[ok.length - 1], prior = ok.slice(0, -1);
+  const lp = splitRun(latest);
+  // Silent time, however it splits. On providers where transport and thinking
+  // are fused this is still the right quantity -- it is what the user sits
+  // through -- so the cause line works even where the three-way chart cannot.
+  const silentOf = r => r.ttft_ms, writeOf = r => r.total_ms - r.ttft_ms;
+  const bSilent = median(prior.map(silentOf)), bWrite = median(prior.map(writeOf));
+  if (!bSilent || !bWrite) return '';
+  const rSilent = silentOf(latest) / bSilent, rWrite = writeOf(latest) / bWrite;
+  // Require the dominant phase to be up meaningfully AND to outpace the other,
+  // or this reports a cause for what is really uniform drift.
+  if (rSilent > 1.25 && rSilent > rWrite * 1.4)
+    return ` It is spending ${rSilent.toFixed(1)}× longer ${lp.separable ? 'thinking' : 'silent'} before the first word, not writing more.`;
+  if (rWrite > 1.25 && rWrite > rSilent * 1.4)
+    return ` It is writing ${rWrite.toFixed(1)}× more than usual, not thinking longer.`;
+  return '';
 }
 
 function renderVerdict(series) {
@@ -832,6 +1418,10 @@ function renderVerdict(series) {
 
   slow.sort((a, b) => b.pct - a.pct);            // worst first
   const slowNames = slow.map(x => x.label);
+  // "23% slower" tells you something is wrong; it does not tell you what. A
+  // model can run long because it thought longer or because it wrote more, and
+  // those are different failures -- only the first is the provider's.
+  const cause = slow.length ? causeOf(series.find(s => s.label === slow[0].label)) : '';
 
   let line, sub;
   if (slow.length) {
@@ -839,7 +1429,7 @@ function renderVerdict(series) {
     sub = `Otherwise, probably not. ${slow.length === 1
         ? `${slowNames[0]} is running about ${slow[0].pct}% over its usual time`
         : `They are running ${slow.map(x => x.pct + '%').join(' and ')} over their usual times`}`
-        + ` right now; the other ${fine.length} are normal.`;
+        + ` right now; the other ${fine.length} are normal.` + cause;
   } else if (down.length && !fine.length) {
     line = `Can't tell right now.`;
     sub = `No model has completed a run recently.`;
@@ -861,50 +1451,43 @@ function renderVerdict(series) {
   }
   if (unknown.length) sub += ` ${unknown.length} still building a baseline.`;
 
-  const t = series.flatMap(s => s.runs).map(r => Date.parse(r.ts)).sort((a, b) => b - a)[0];
-  el.innerHTML = `<p class="hero-line">${line}</p><p class="hero-sub">${sub}</p>`
-    + (t ? `<p class="hero-meta">as of ${new Date(t).toLocaleString('en-US',
-        { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>` : '');
+  // No timestamp here. The hero used to carry "as of <latest run>" while the
+  // header carried "updated <file generated>" -- two different times, both
+  // looking authoritative, with nothing telling a reader which one governed.
+  // Both facts now live on one labelled line below.
+  el.innerHTML = `<p class="hero-line">${line}</p><p class="hero-sub">${sub}</p>`;
 }
 
-function renderTiles(series) {
-  document.getElementById('tiles').innerHTML = series.map((s, i) => {
-    const ok = s.runs.filter(r => r.status === 'ok' && r.total_ms != null);
-    const lastAny = s.runs[s.runs.length - 1];
-    const down = lastAny && lastAny.status !== 'ok' ? lastAny.status : null;
-    const color = colorOf(i);
+// One line per model: is it answering, and is it answering normally. Uses the
+// same judge() the tiles and hero use, so the rail can never disagree with the
+// verdict it sits next to.
+function railState(s) {
+  const ok = s.runs.filter(r => r.status === 'ok' && r.total_ms != null);
+  const lastAny = s.runs[s.runs.length - 1];
+  if (lastAny && lastAny.status === 'refusal') return { cls: 'is-bad', word: 'refusing' };
+  if (lastAny && lastAny.status === 'error')   return { cls: 'is-bad', word: 'erroring' };
+  if (!ok.length) return { cls: 'is-bad', word: 'no data' };
+  const latest = ok[ok.length - 1];
+  // An empty or refused BODY on an otherwise successful request. Distinct from
+  // slow: the response arrived, it just was not an answer.
+  if (latest.health && latest.health !== 'ok') return { cls: 'is-bad', word: 'degraded' };
+  const j = judge(latest.total_ms, ok.slice(0, -1).map(r => r.total_ms));
+  if (j.state === 'unknown') return { cls: '', word: 'new' };
+  if (j.state === 'slow')    return { cls: 'is-slow', word: `+${j.pct}%` };
+  return { cls: 'is-ok', word: 'healthy' };
+}
 
-    if (!ok.length) {
-      return `<div class="tile down">
-        <div class="tile-head"><span class="swatch" style="background:${color}"></span>
-          <span class="tile-name">${s.label}</span><span class="tile-vendor">${s.vendor}</span></div>
-        <div class="tile-value">&mdash;</div>
-        <div class="verdict v-bad"><span>&#9650;</span> ${
-          down === 'refusal' ? 'declining every request'
-          : down === 'error' ? 'erroring on every request' : 'no completed runs'}</div>
-        <div class="tile-foot">${s.runs.length} run${s.runs.length === 1 ? '' : 's'}, none answered</div>
-      </div>`;
-    }
-
-    const latest = ok[ok.length - 1];
-    // Baseline excludes the run being judged, or a model is compared to itself.
-    const prior = ok.slice(0, -1).map(r => r.total_ms);
-    const base = prior.length ? median(prior) : null;
-    const v = verdict(latest.total_ms, prior);
-
-    return `<div class="tile">
-      <div class="tile-head"><span class="swatch" style="background:${color}"></span>
-        <span class="tile-name">${s.label}</span><span class="tile-vendor">${s.vendor}</span></div>
-      <div class="tile-value">${fmtMs(latest.total_ms)}</div>
-      <div class="verdict ${v.cls}"><span>${v.icon}</span> ${v.text}</div>
-      <div class="tile-foot">
-        <span>${base != null ? `typical ${fmtMs(base)}` : `${ok.length} completed`}</span>
-        ${sparkline(ok, color)}
-      </div>
-      ${down ? `<div class="tile-note">latest attempt: ${down}</div>` : ''}
+function renderRail(series) {
+  document.getElementById('rail').innerHTML = series.map(s => {
+    const st = railState(s);
+    return `<div class="mc ${st.cls}" title="${s.label} — ${st.word}">
+      <span class="mc-dot"></span>
+      <span class="mc-name">${s.label}</span>
+      <span class="mc-state">${st.word}</span>
     </div>`;
   }).join('');
 }
+
 
 function renderTable(series) {
   const head = ['Model','Total (med)','First token (med)','Output tok (med)','Rate (med)','Cost / run','Health'];
@@ -916,7 +1499,7 @@ function renderTable(series) {
       ? '<span class="ok">all ok</span>'
       : `<span class="fail">${bad} degraded</span>`;
     return `<tr>
-      <td>${s.label}</td>
+      <td><span class="swatch tbl-swatch" style="background:${colorFor(s.key)}"></span>${s.label}</td>
       <td>${fmtMs(median(ok.map(r => r.total_ms)))}</td>
       <td>${fmtMs(median(ok.map(r => r.ttft_ms).filter(v => v != null)))}</td>
       <td>${fmtNum(median(ok.map(r => r.output_tokens)))}</td>
@@ -944,7 +1527,8 @@ applyTheme((() => { try { return localStorage.getItem('lhb-theme') || 'system'; 
 let DATA = null;
 let HOURS = 24;
 let SCALE = 'abs';   // 'abs' = seconds, 'rel' = % of each model's own median
-let AXIS = 'log';    // 'log' or 'lin' -- y axis for whichever measure is showing
+let AXIS = 'lin';    // 'lin' or 'log' -- y axis for whichever measure is showing
+let VIEW = 'cards';  // 'cards' = one small multiple per model, 'overlay' = all on one panel
 
 function draw() {
   if (!DATA) return;
@@ -954,15 +1538,18 @@ function draw() {
     .filter(s => s.runs.length);
 
   const total = series.reduce((n, s) => n + s.runs.length, 0);
+  const stamp = ms => new Date(ms).toLocaleString('en-US',
+    { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const newest = series.flatMap(s => s.runs).map(r => Date.parse(r.ts)).sort((a, b) => b - a)[0];
   document.getElementById('meta').textContent =
-    `${series.length} models · ${total} runs · updated ` +
-    new Date(DATA.generated_at).toLocaleString('en-US',
-      { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    `${series.length} models · ${total} runs in range`
+    + (newest ? ` · latest run ${stamp(newest)}` : '')
+    + ` · data published ${stamp(Date.parse(DATA.generated_at))}`;
 
   if (!series.length) {
     document.getElementById('hero').innerHTML =
       '<p class="hero-line">No data in this range.</p>';
-    document.getElementById('tiles').innerHTML = '<p class="empty">No runs in this range.</p>';
+    document.getElementById('rail').innerHTML = '';
     document.getElementById('table').innerHTML = '';
     document.getElementById('chart-time').innerHTML = '<p class="empty">No runs in this range.</p>';
     document.getElementById('chart-anatomy').innerHTML = '<p class="empty">No runs in this range.</p>';
@@ -972,10 +1559,25 @@ function draw() {
   // Charts show every prompt (with a marker at each change); anything that
   // JUDGES a run must stay inside the current prompt.
   const judged = currentPromptOnly(series);
+  const statsByKey = new Map(judged.map(s => [s.key, s]));
   renderVerdict(judged);
+  renderRail(judged);
   anatomyChart(document.getElementById('chart-anatomy'), judged);
-  renderTiles(judged);
   renderTable(judged);
+  const chartEl = document.getElementById('chart-time');
+  const legendEl = document.getElementById('legend-time');
+  // Cards answer "how is this model doing"; the overlay answers "how do they
+  // compare". Neither subsumes the other, so the reader picks.
+  // Three grains of the same data: per model, per provider, or all together.
+  // None subsumes the others -- cards answer "how is this model doing", the
+  // provider facets answer "is this an outage at one vendor", and the overlay
+  // answers "how do they compare" -- so the reader picks.
+  const render = (data, pick, fmt, ref) =>
+      VIEW === 'overlay' ? lineChart(chartEl, legendEl, data, pick, fmt, 'Response time', ref,
+                                     null, 380, promptBreaks(data), AXIS)
+    : VIEW === 'vendor'  ? facetedChart(chartEl, legendEl, data, pick, fmt, ref, AXIS)
+    :                      smallMultiples(chartEl, legendEl, data, pick, fmt, ref, AXIS, statsByKey);
+
   if (SCALE === 'rel') {
     // Divide each model by its OWN median so the lines become comparable as
     // deviations. Absolute seconds are not comparable across models -- one
@@ -987,11 +1589,9 @@ function draw() {
       return { ...sr, runs: sr.runs.map(r => ({ ...r,
         rel_pct: base && r.total_ms != null ? (r.total_ms / base) * 100 : null })) };
     });
-    facetedChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
-                 rel, r => r.rel_pct, v => Math.round(v) + '%', 100, AXIS);
+    render(rel, r => r.rel_pct, v => Math.round(v) + '%', 100);
   } else {
-    facetedChart(document.getElementById('chart-time'), document.getElementById('legend-time'),
-                 series, r => r.total_ms, fmtMs, null, AXIS);
+    render(series, r => r.total_ms, fmtMs, null);
   }
 }
 
@@ -1000,6 +1600,8 @@ async function main() {
     const res = await fetch('results.json?_=' + Date.now());
     if (!res.ok) throw new Error(res.status);
     DATA = await res.json();
+    // From the FULL series list, before any range filter narrows it.
+    assignColors(DATA.series || []);
   } catch (err) {
     document.getElementById('meta').textContent =
       'Could not load results.json — no runs have been published yet.';
@@ -1015,6 +1617,7 @@ async function main() {
       btn.classList.add('on');
       if (btn.dataset.mode) SCALE = btn.dataset.mode;
       else if (btn.dataset.axis) AXIS = btn.dataset.axis;
+      else if (btn.dataset.view) VIEW = btn.dataset.view;
       else HOURS = Number(btn.dataset.hours);
       draw();
     });
