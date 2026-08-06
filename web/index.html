@@ -1215,10 +1215,17 @@ function splitRun(run) {
   const ttft = run.ttft_ms || 0;
   const write = Math.max(0, total - ttft);
   const ttfb = run.ttfb_ms, think = run.thinking_ms;
+  // Reasoning tokens settle it exactly: the model demonstrably reasoned, so a
+  // thinking time of ~0 means the clock missed it, not that it did not happen.
+  // Preferred over the ttfb heuristic below, which is scale-dependent -- a
+  // provider that withholds the stream through 350ms of reasoning produces
+  // ttfb=402ms, sails under any plausible transport ceiling, and gets reported
+  // as "0% thinking". True today only because the offending runs are slow.
+  const reasoned = run.reasoning_tokens > 0;
   // Runs from before ttfb was recorded carry nulls; they get the old two-way
   // split rather than a fabricated zero.
   const separable = ttfb != null && think != null
-                 && !(think < NO_THINK_MS && ttfb > TRANSPORT_CEILING_MS);
+                 && !(think < NO_THINK_MS && (reasoned || ttfb > TRANSPORT_CEILING_MS));
   return separable
     ? { separable: true, transport: ttfb, think, write, total }
     : { separable: false, wait: ttft, write, total };

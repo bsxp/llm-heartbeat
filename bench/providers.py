@@ -177,6 +177,11 @@ def run_openai_compatible(cfg: dict[str, Any], text: str) -> RunResult:
         out.output_tokens = usage.completion_tokens or 0
         details = getattr(usage, "prompt_tokens_details", None)
         out.cached_input_tokens = getattr(details, "cached_tokens", 0) or 0
+        # Recorded even though this endpoint cannot TIME the reasoning: a nonzero
+        # count next to a near-zero thinking_ms is proof the provider withheld
+        # the stream, which is otherwise only guessable from how long ttfb was.
+        out_details = getattr(usage, "completion_tokens_details", None)
+        out.reasoning_tokens = getattr(out_details, "reasoning_tokens", 0) or 0
     return out
 
 
