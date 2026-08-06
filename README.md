@@ -131,6 +131,8 @@ bench/prompt.py       the exact prompt + its hash, and the health check
 bench/providers.py    the measurement: streaming call + timing, per provider
 bench/models.json     which models run, at what effort, at what price
 bench/config.py       roster loading
+bench/advisor.py      ranking + summaries over the published results (no MCP dep)
+mcp_server.py         MCP server exposing those to other agents
 web/                  the dashboard (static HTML, no build step, no dependencies)
 scripts/              helper to list live model IDs from each provider
 amplify.yml           AWS Amplify build spec for the dashboard
@@ -144,6 +146,53 @@ mean* is in this repo.
 **No credentials are in this repository, and none ever should be.** API keys are read
 from the environment at runtime and stored in AWS Secrets Manager. `bench/models.json`
 references environment variable *names* only.
+
+## Asking this from an agent (MCP)
+
+The published measurements are available to other agents over MCP, so a coding agent
+can ask which model is answering fastest right now rather than guessing.
+
+```bash
+pip install -e ".[mcp]"
+python mcp_server.py
+```
+
+Register it with an MCP client — for Claude Code:
+
+```json
+{ "mcpServers": {
+    "llm-heartbeat": { "command": "python",
+                       "args": ["/absolute/path/to/mcp_server.py"] } } }
+```
+
+Four tools:
+
+| tool | answers |
+|---|---|
+| `fastest_model` | ranked fastest-first, by `total` or `first_token` |
+| `list_models` | every model's latency profile over a window |
+| `model_status` | one model — including whether it is erroring or degraded |
+| `measurement_method` | how the numbers are made, and what they cannot tell you |
+
+`metric` is the parameter that matters. **`total`** is time to a finished answer;
+**`first_token`** is time until anything appears, which is what someone watching a
+stream experiences. On reasoning models these disagree — at the time of writing Claude
+Opus 4.8 is fastest to first word while Claude Opus 4.7 is fastest to finish.
+
+Two deliberate choices worth knowing:
+
+**Every response carries its caveats inline.** A calling agent sees tool output, not
+this README, so anything required to use the numbers responsibly travels with them.
+The load-bearing one: this measures latency on one fixed prompt and says *nothing*
+about whether a model can do the caller's task. "Fastest" is not "best", and routing
+hard work to whatever tops this ranking is a misuse of it.
+
+**Unhealthy models are excluded from rankings by default.** A refused or empty
+response comes back fast, so a broken model would otherwise rank first. Pass
+`exclude_unhealthy=false` if you want to see them anyway.
+
+It reads the same public `results.json` the dashboard does, cached for five minutes
+against an hourly publish.
 
 ## Running a measurement yourself
 

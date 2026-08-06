@@ -11,6 +11,11 @@ license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = ["anthropic>=0.70", "openai>=1.60", "google-genai>=1.0"]
 
+# Only needed to serve the measurements to other agents; the measurement path
+# and bench/advisor.py both run without it.
+[project.optional-dependencies]
+mcp = ["mcp[cli]>=1.2"]
+
 [project.urls]
 Homepage = "https://github.com/bsxp/llm-heartbeat"
 
