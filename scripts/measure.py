@@ -30,8 +30,20 @@ def main(key: str) -> int:
 
     print(f"total time     {result.total_ms:>8,} ms   <- the headline")
     print(f"first token    {result.ttft_ms:>8,} ms")
+    # The three-way split the dashboard draws. Printing it here is the fastest
+    # way to tell whether an adapter is timing the reasoning phase or hiding it:
+    # a transport of 15s means the provider withheld the stream until the model
+    # stopped thinking, and thinking_ms is meaningless for that run.
+    if result.ttfb_ms is not None:
+        print(f"  transport    {result.ttfb_ms:>8,} ms")
+        print(f"  thinking     {result.thinking_ms:>8,} ms   <- silent")
+        print(f"  writing      {result.total_ms - result.ttft_ms:>8,} ms")
+    else:
+        print("  (adapter reported no first-byte time; split unavailable)")
     print(f"rate           {result.tok_per_s:>8} tok/s")
     print(f"output tokens  {result.output_tokens:>8,}")
+    if result.reasoning_tokens:
+        print(f"  reasoning    {result.reasoning_tokens:>8,}")
     print(f"input tokens   {result.input_tokens:>8,}")
     print(f"health         {prompt.health_flag(result.text):>8}")
     return 0

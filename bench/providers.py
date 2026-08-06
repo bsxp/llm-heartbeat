@@ -40,6 +40,7 @@ class RunResult:
     input_tokens: int = 0
     output_tokens: int = 0
     cached_input_tokens: int = 0
+    reasoning_tokens: int = 0   # subset of output_tokens; 0 where unreported
     error: str | None = None
 
     @property
@@ -179,6 +180,67 @@ def run_openai_compatible(cfg: dict[str, Any], text: str) -> RunResult:
     return out
 
 
+def run_openai_responses(cfg: dict[str, Any], text: str) -> RunResult:
+    """OpenAI via the Responses API, which streams the reasoning phase.
+
+    `chat.completions` sends nothing at all until reasoning has finished, so
+    ttfb absorbs the entire silent phase and thinking_ms falls out as ~0 -- the
+    dashboard has to report those runs as "not separable" because claiming the
+    model thought for 21ms would be false. Responses emits `response.created`
+    immediately and reasoning events while the model works, so ttfb times the
+    network alone and ttft - ttfb is real reasoning time.
+
+    Kept as a separate adapter rather than a flag on run_openai_compatible:
+    that function also serves xAI and DeepSeek through OpenAI-compatible
+    endpoints, and those do not implement Responses.
+    """
+    from openai import OpenAI
+
+    out = RunResult()
+    client = OpenAI(api_key=os.environ[cfg["api_key_env"]],
+                    base_url=cfg.get("base_url") or None, max_retries=0)
+    clock = _Clock()
+    chunks: list[str] = []
+    usage = None
+
+    kwargs: dict[str, Any] = {
+        "model": cfg["model_id"],
+        "input": text,
+        "max_output_tokens": MAX_TOKENS,
+        "stream": True,
+    }
+    if cfg.get("effort"):
+        kwargs["reasoning"] = {"effort": cfg["effort"]}
+
+    for event in client.responses.create(**kwargs):
+        clock.mark_stream_open()
+        etype = getattr(event, "type", "")
+        # Mark on VISIBLE text only, exactly as the Anthropic adapter does, so
+        # ttft means the same thing across vendors: how long until words appear.
+        # Reasoning summary deltas are NOT the answer and must not stop the clock.
+        if etype == "response.output_text.delta":
+            clock.mark_first_token()
+            chunks.append(getattr(event, "delta", "") or "")
+        elif etype in ("response.completed", "response.incomplete"):
+            usage = getattr(getattr(event, "response", None), "usage", None)
+
+    out.ttfb_ms = clock.ttfb
+    out.ttft_ms = clock.ttft
+    out.total_ms = clock.elapsed_ms()
+    out.text = "".join(chunks)
+    if usage:
+        out.input_tokens = getattr(usage, "input_tokens", 0) or 0
+        out.output_tokens = getattr(usage, "output_tokens", 0) or 0
+        # Reasoning tokens are counted inside output_tokens. Recorded separately
+        # because they are the only direct evidence of thinking that survives
+        # when the timing cannot be split.
+        details = getattr(usage, "output_tokens_details", None)
+        out.reasoning_tokens = getattr(details, "reasoning_tokens", 0) or 0
+        cached = getattr(usage, "input_tokens_details", None)
+        out.cached_input_tokens = getattr(cached, "cached_tokens", 0) or 0
+    return out
+
+
 def run_google(cfg: dict[str, Any], text: str) -> RunResult:
     from google import genai
     from google.genai import types
@@ -216,6 +278,7 @@ def run_google(cfg: dict[str, Any], text: str) -> RunResult:
 
 ADAPTERS: dict[str, Callable[[dict[str, Any], str], RunResult]] = {
     "anthropic": run_anthropic,
-    "openai": run_openai_compatible,
+    "openai": run_openai_compatible,        # chat.completions; also xAI, DeepSeek
+    "openai_responses": run_openai_responses,
     "google": run_google,
 }
