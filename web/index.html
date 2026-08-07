@@ -1801,7 +1801,17 @@ document.getElementById('year').textContent = new Date().getFullYear();
 (function mcpDialog() {
   const dlg = document.getElementById('mcp-dlg');
   if (!dlg || !dlg.showModal) return;   // no <dialog> support: button stays inert rather than dead-ending
-  document.getElementById('mcp-open').addEventListener('click', () => dlg.showModal());
+
+  // Analytics is optional furniture: an ad blocker leaving gtag undefined must
+  // not take the copy button down with it, so every call goes through here.
+  const track = (name, params) => {
+    if (typeof gtag === 'function') gtag('event', name, params || {});
+  };
+
+  document.getElementById('mcp-open').addEventListener('click', () => {
+    dlg.showModal();
+    track('mcp_dialog_open');
+  });
   document.getElementById('mcp-x').addEventListener('click', () => dlg.close());
   // Backdrop click. The dialog element's own box is the click target for the
   // backdrop too, so compare against its rect instead of testing ev.target.
@@ -1814,6 +1824,11 @@ document.getElementById('year').textContent = new Date().getFullYear();
   dlg.querySelectorAll('.mcp-copy').forEach(btn => {
     btn.addEventListener('click', async () => {
       const text = document.getElementById('mcp-' + btn.dataset.copy).textContent;
+      // Fired on the click, not on clipboard success. The click is the intent;
+      // whether writeText resolved is a browser detail, and dropping those
+      // events would quietly under-count exactly the people on the browsers
+      // where copying is awkward.
+      track('mcp_copy', { snippet: btn.dataset.copy });
       try {
         await navigator.clipboard.writeText(text);
         btn.textContent = 'Copied';
