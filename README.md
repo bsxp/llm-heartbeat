@@ -161,8 +161,8 @@ Register it with an MCP client — for Claude Code:
 
 ```json
 { "mcpServers": {
-    "llm-heartbeat": { "command": "python",
-                       "args": ["/absolute/path/to/mcp_server.py"] } } }
+    "slow": { "command": "python",
+              "args": ["/absolute/path/to/mcp_server.py"] } } }
 ```
 
 Four tools:

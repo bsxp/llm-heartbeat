@@ -7,8 +7,8 @@
 Then point an MCP client at it, e.g. in Claude Code's config:
 
     { "mcpServers": {
-        "llm-heartbeat": { "command": "python",
-                           "args": ["/absolute/path/to/mcp_server.py"] } } }
+        "slow": { "command": "python",
+                  "args": ["/absolute/path/to/mcp_server.py"] } } }
 
 All the logic lives in bench/advisor.py, which has no MCP dependency and can be
 exercised directly. This file is only the protocol surface.
@@ -28,7 +28,7 @@ from mcp.server.fastmcp import FastMCP
 
 from bench import advisor
 
-mcp = FastMCP("llm-heartbeat")
+mcp = FastMCP("slow")
 
 
 @mcp.tool()
