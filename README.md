@@ -152,18 +152,14 @@ references environment variable *names* only.
 The published measurements are available to other agents over MCP, so a coding agent
 can ask which model is answering fastest right now rather than guessing.
 
-```bash
-pip install -e ".[mcp]"
-python mcp_server.py
-```
-
-Register it with an MCP client — for Claude Code:
+It is a remote server — there is nothing to install and no key to request:
 
 ```json
 { "mcpServers": {
-    "slow": { "command": "python",
-              "args": ["/absolute/path/to/mcp_server.py"] } } }
+    "slow": { "url": "https://mcp.ismyllmslow.com/mcp" } } }
 ```
+
+Or, with Claude Code: `claude mcp add --transport http slow https://mcp.ismyllmslow.com/mcp`
 
 Four tools:
 
@@ -193,6 +189,32 @@ response comes back fast, so a broken model would otherwise rank first. Pass
 
 It reads the same public `results.json` the dashboard does, cached for five minutes
 against an hourly publish.
+
+### Running it yourself
+
+The tools are defined in `mcp_server.py` and the logic in `bench/advisor.py`, which
+has no MCP dependency at all. To run the server locally against the live data:
+
+```bash
+pip install -e ".[serve]"
+python mcp_server.py          # http://127.0.0.1:8000/mcp
+```
+
+In production it is an AWS Lambda behind a Function URL: `lambda_handler.py` wraps the
+same ASGI app in Mangum. The deploy configuration lives in the separate private infra
+repository, not here.
+
+Two things about that deployment are load-bearing rather than incidental:
+
+**The server runs stateless, with JSON replies rather than SSE.** Lambda gives each
+request its own short-lived execution environment, so a server holding session state
+in process memory would hand out session IDs the next request cannot honour, and it
+cannot keep a stream open across invocations either.
+
+**The ASGI app is rebuilt on every invocation.** Mangum runs the lifespan per
+invocation while `StreamableHTTPSessionManager.run()` may be called only once per
+instance — so a module-level app answers the first request on a container and then
+fails every later one. That bug survives any test that makes a single call.
 
 ## Running a measurement yourself
 

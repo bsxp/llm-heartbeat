@@ -288,7 +288,12 @@
      rather than asking anyone to select 4 lines of JSON out of a scroll box. */
   .mcp-code { position: relative; background: var(--surface-1); border: 1px solid var(--border);
               border-radius: 8px; }
-  .mcp-code pre { margin: 0; padding: 12px 46px 12px 13px; overflow-x: auto;
+  /* Wrap rather than scroll. The install command is one long line, and with
+     overflow-x its tail sat underneath the copy button -- readable only by
+     scrolling a box that gave no sign it had more in it. The JSON is short
+     enough that wrapping never triggers on it. */
+  .mcp-code pre { margin: 0; padding: 12px 46px 12px 13px;
+                  white-space: pre-wrap; overflow-wrap: anywhere;
                   font-size: 0.74rem; line-height: 1.55;
                   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .mcp-copy { position: absolute; top: 7px; right: 7px; font: inherit; font-size: 0.68rem;
@@ -840,34 +845,39 @@
   <div class="tooltip" id="tooltip"></div>
 </div>
 
-<!-- The server runs on the reader's own machine against the same public
-     results.json this page reads, so there is nothing to sign up for and no
-     endpoint to hand out -- the dialog is install, register, and the caveat
-     that has to travel with the numbers. -->
+<!-- A hosted endpoint over the same public results.json this page reads, so
+     there is nothing to install and no key to issue. The dialog is the URL, the
+     two ways to register it, and the caveat that has to travel with the
+     numbers. The URL comes first because for most readers it is the whole
+     answer. -->
 <dialog id="mcp-dlg" aria-labelledby="mcp-title">
   <div class="mcp-head">
     <div>
       <h2 id="mcp-title">Ask this from your agent</h2>
       <p>These measurements are served over MCP, so a coding agent can ask which model is
-         answering fastest right now instead of guessing.</p>
+         answering fastest right now instead of guessing. It is a hosted endpoint &mdash;
+         point a client at the URL and it works.</p>
     </div>
     <button type="button" class="mcp-x" id="mcp-x" aria-label="Close">&times;</button>
   </div>
   <div class="mcp-body">
-    <p class="mcp-step">1 — Install</p>
+    <p class="mcp-step">Endpoint &mdash; nothing to install, no key</p>
     <div class="mcp-code">
-      <button type="button" class="mcp-copy" data-copy="install">Copy</button>
-      <pre id="mcp-install">git clone https://github.com/bsxp/llm-heartbeat.git
-cd llm-heartbeat
-pip install -e ".[mcp]"</pre>
+      <button type="button" class="mcp-copy" data-copy="url">Copy</button>
+      <pre id="mcp-url">https://mcp.ismyllmslow.com/mcp</pre>
     </div>
 
-    <p class="mcp-step">2 — Register with your client</p>
+    <p class="mcp-step">In Claude Code</p>
+    <div class="mcp-code">
+      <button type="button" class="mcp-copy" data-copy="cli">Copy</button>
+      <pre id="mcp-cli">claude mcp add --transport http slow https://mcp.ismyllmslow.com/mcp</pre>
+    </div>
+
+    <p class="mcp-step">Or in a client config file</p>
     <div class="mcp-code">
       <button type="button" class="mcp-copy" data-copy="config">Copy</button>
       <pre id="mcp-config">{ "mcpServers": {
-    "slow": { "command": "python",
-              "args": ["/absolute/path/to/mcp_server.py"] } } }</pre>
+    "slow": { "url": "https://mcp.ismyllmslow.com/mcp" } } }</pre>
     </div>
 
     <p class="mcp-step">Four tools</p>
