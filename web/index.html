@@ -252,6 +252,64 @@
   .mc.is-bad  .mc-dot { background: var(--critical); }
   .mc.is-bad  .mc-state { color: var(--critical); }
 
+  /* The rail already answers "is anything wrong right now" for a human. The same
+     question from an agent is answered over MCP, so the entry point to that
+     lives here rather than in a section of prose the agent's operator has to
+     scroll to. Quiet by default -- it is a door, not a call to action. */
+  .rail-mcp { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border); }
+  .mcp-open {
+    font: inherit; font-size: 0.73rem; line-height: 1; width: 100%; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; padding: 7px 9px;
+    background: var(--surface-2); color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 7px;
+  }
+  .mcp-open:hover { color: var(--text-primary); border-color: var(--axis); }
+  .mcp-open svg { width: 13px; height: 13px; flex: none; }
+
+  /* ::backdrop does not inherit from the page, and the theme switch sets its
+     tokens on :root -- so the dim is a literal colour, not var(--page). */
+  #mcp-dlg {
+    width: min(560px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--page); color: var(--text-primary);
+  }
+  #mcp-dlg::backdrop { background: rgba(0,0,0,0.45); }
+  .mcp-head { display: flex; align-items: flex-start; gap: 12px;
+              padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
+  .mcp-head h2 { margin: 0 0 5px; font-size: 0.95rem; font-weight: 600; }
+  .mcp-head p { margin: 0; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.55; }
+  .mcp-x { font: inherit; font-size: 1.1rem; line-height: 1; cursor: pointer; flex: none;
+           background: transparent; border: 0; color: var(--text-muted); padding: 2px 4px; }
+  .mcp-x:hover { color: var(--text-primary); }
+  .mcp-body { padding: 16px 20px 20px; max-height: min(64vh, 560px); overflow-y: auto; }
+  .mcp-step { font-size: 0.73rem; font-weight: 600; letter-spacing: .06em;
+              text-transform: uppercase; color: var(--text-muted); margin: 0 0 7px; }
+  .mcp-step + .mcp-step { margin-top: 18px; }
+  /* The snippet is the whole point of the dialog, so it gets a copy button
+     rather than asking anyone to select 4 lines of JSON out of a scroll box. */
+  .mcp-code { position: relative; background: var(--surface-1); border: 1px solid var(--border);
+              border-radius: 8px; }
+  .mcp-code pre { margin: 0; padding: 12px 46px 12px 13px; overflow-x: auto;
+                  font-size: 0.74rem; line-height: 1.55;
+                  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .mcp-copy { position: absolute; top: 7px; right: 7px; font: inherit; font-size: 0.68rem;
+              line-height: 1; cursor: pointer; padding: 5px 7px; border-radius: 6px;
+              background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
+  .mcp-copy:hover { color: var(--text-primary); }
+  .mcp-tools { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  /* The page's `th, td` rule is right-aligned nowrap tabular numbers, written for
+     the all-models table. None of that suits prose, so undo it here explicitly. */
+  .mcp-tools td { padding: 7px 0; border-bottom: 1px solid var(--border);
+                  color: var(--text-secondary); vertical-align: top;
+                  text-align: left; white-space: normal; font-variant-numeric: normal; }
+  .mcp-tools tr:last-child td { border-bottom: 0; }
+  .mcp-tools td:first-child { width: 150px; padding-right: 12px; color: var(--text-primary);
+                              font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                              font-size: 0.94em; }
+  .mcp-caveat { margin: 18px 0 0; padding: 11px 13px; border-radius: 8px;
+                background: var(--surface-1); border: 1px solid var(--border);
+                font-size: 0.78rem; line-height: 1.55; color: var(--text-secondary); }
+  .mcp-caveat strong { color: var(--text-primary); font-weight: 550; }
+
   /* Too narrow to pin without crowding the charts, so the rail rejoins the flow
      as a horizontal strip above the evidence rather than disappearing. */
   @media (max-width: 1335px) {
@@ -262,6 +320,10 @@
     #rail { display: flex; flex-wrap: wrap; gap: 6px 14px; }
     .mc { border-bottom: 0; padding: 4px 0; }
     .mc-state { margin-left: 2px; }
+    /* In the strip the rail has no panel to sit inside, so a full-width button
+       with a rule above it would read as a section divider. Shrink to content. */
+    .rail-mcp { margin-top: 8px; padding-top: 0; border-top: 0; }
+    .mcp-open { width: auto; }
   }
 
   /* The h1 is now the question, deliberately subordinate to the answer under
@@ -534,6 +596,16 @@
     <div class="rail-inner">
       <div class="rail-head">Status</div>
       <div id="rail"></div>
+      <div class="rail-mcp">
+        <button type="button" class="mcp-open" id="mcp-open" aria-haspopup="dialog">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/>
+            <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>
+          </svg>
+          Connect over MCP
+        </button>
+      </div>
     </div>
   </aside>
 
@@ -734,6 +806,51 @@
 
   <div class="tooltip" id="tooltip"></div>
 </div>
+
+<!-- The server runs on the reader's own machine against the same public
+     results.json this page reads, so there is nothing to sign up for and no
+     endpoint to hand out -- the dialog is install, register, and the caveat
+     that has to travel with the numbers. -->
+<dialog id="mcp-dlg" aria-labelledby="mcp-title">
+  <div class="mcp-head">
+    <div>
+      <h2 id="mcp-title">Ask this from your agent</h2>
+      <p>These measurements are served over MCP, so a coding agent can ask which model is
+         answering fastest right now instead of guessing.</p>
+    </div>
+    <button type="button" class="mcp-x" id="mcp-x" aria-label="Close">&times;</button>
+  </div>
+  <div class="mcp-body">
+    <p class="mcp-step">1 — Install</p>
+    <div class="mcp-code">
+      <button type="button" class="mcp-copy" data-copy="install">Copy</button>
+      <pre id="mcp-install">git clone https://github.com/bsxp/llm-heartbeat.git
+cd llm-heartbeat
+pip install -e ".[mcp]"</pre>
+    </div>
+
+    <p class="mcp-step">2 — Register with your client</p>
+    <div class="mcp-code">
+      <button type="button" class="mcp-copy" data-copy="config">Copy</button>
+      <pre id="mcp-config">{ "mcpServers": {
+    "slow": { "command": "python",
+              "args": ["/absolute/path/to/mcp_server.py"] } } }</pre>
+    </div>
+
+    <p class="mcp-step">Four tools</p>
+    <table class="mcp-tools">
+      <tr><td>fastest_model</td><td>Ranked fastest-first, by <code>total</code> or <code>first_token</code>.</td></tr>
+      <tr><td>list_models</td><td>Every model&rsquo;s latency profile over a window.</td></tr>
+      <tr><td>model_status</td><td>One model, including whether it is erroring or degraded.</td></tr>
+      <tr><td>measurement_method</td><td>How the numbers are made, and what they cannot tell you.</td></tr>
+    </table>
+
+    <p class="mcp-caveat"><strong>Fastest is not best.</strong> This measures latency on one
+      fixed prompt and says nothing about whether a model can do your task. Routing hard work
+      to whatever tops the ranking is a misuse of it. Every tool response repeats this inline,
+      because a calling agent sees the output and not this page.</p>
+  </div>
+</dialog>
 </div>
 
 <script>
@@ -1631,6 +1748,37 @@ async function main() {
   });
   draw();
 }
+
+// Wired outside main(): main() returns early when results.json is missing, and
+// the MCP instructions are still correct on a page with no data on it.
+(function mcpDialog() {
+  const dlg = document.getElementById('mcp-dlg');
+  if (!dlg || !dlg.showModal) return;   // no <dialog> support: button stays inert rather than dead-ending
+  document.getElementById('mcp-open').addEventListener('click', () => dlg.showModal());
+  document.getElementById('mcp-x').addEventListener('click', () => dlg.close());
+  // Backdrop click. The dialog element's own box is the click target for the
+  // backdrop too, so compare against its rect instead of testing ev.target.
+  dlg.addEventListener('click', ev => {
+    const r = dlg.getBoundingClientRect();
+    const inside = ev.clientX >= r.left && ev.clientX <= r.right
+                && ev.clientY >= r.top  && ev.clientY <= r.bottom;
+    if (!inside) dlg.close();
+  });
+  dlg.querySelectorAll('.mcp-copy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const text = document.getElementById('mcp-' + btn.dataset.copy).textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = 'Copied';
+      } catch {
+        // Non-secure origin, or permission refused. Say so -- a button that
+        // silently does nothing reads as a broken page.
+        btn.textContent = 'Select it';
+      }
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
+    });
+  });
+})();
 
 main();
 window.addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTimeout(draw, 200); });
